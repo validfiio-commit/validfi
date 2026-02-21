@@ -17,6 +17,13 @@ function getClient() {
   }
 
   try {
+    // const account = privateKeyToAccount(pk as `0x${string}`);
+    // const signer = createWalletClient({
+    //   account,
+    //   chain: base,
+    //   transport: http("https://mainnet.base.org"),
+    // }).extend(publicActions);
+
     const account = privateKeyToAccount(pk as `0x${string}`);
     const signer = createWalletClient({
       account,
@@ -24,8 +31,13 @@ function getClient() {
       transport: http("https://mainnet.base.org"),
     }).extend(publicActions);
 
+    console.log("SIGNER ADDRESS:", signer.account?.address);
+
+    // const client = new x402Client();
+    // registerExactEvmScheme(client, { signer: signer as any});
+
     const client = new x402Client();
-    registerExactEvmScheme(client, { signer: signer as any});
+    registerExactEvmScheme(client, { signer: { ...signer, address: account.address } as any });
 
     const axiosInstance = axios.create({
       baseURL: "https://x402-api.heyelsa.ai",
