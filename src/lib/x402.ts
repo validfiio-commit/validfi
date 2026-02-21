@@ -58,58 +58,46 @@ function axiosErr(e: any) {
   };
 }
 
+async function paidPost<T = any>(c: any, url: string, body: any) {
+  try {
+    const r = await c.post(url, body);
+    return { ok: true as const, data: r.data as T };
+  } catch (e: any) {
+    return { ok: false as const, error: axiosErr(e) };
+  }
+}
+
 export async function fetchWalletIntelligence(walletAddress: string): Promise<WalletIntelligence | null> {
   const c = getClient();
   if (!c) return null;
 
   try {
-    const [portfolioRes, balancesRes, analysisRes, stakingRes, pnlRes] = await Promise.allSettled([
-      c.post("/api/get_portfolio", { wallet_address: walletAddress }),
-      c.post("/api/get_balances", { wallet_address: walletAddress }),
-      c.post("/api/analyze_wallet", { wallet_address: walletAddress }),
-      c.post("/api/get_stake_balances", { wallet_address: walletAddress }),
-      c.post("/api/get_pnl_report", { wallet_address: walletAddress, time_period: "30_days" }),
-    ]);
+    const portfolioRes = await paidPost<any>(c, "/api/get_portfolio", { wallet_address: walletAddress });
+    const balancesRes  = await paidPost<any>(c, "/api/get_balances", { wallet_address: walletAddress });
+    const analysisRes  = await paidPost<any>(c, "/api/analyze_wallet", { wallet_address: walletAddress });
+    const stakingRes   = await paidPost<any>(c, "/api/get_stake_balances", { wallet_address: walletAddress });
+    const pnlRes       = await paidPost<any>(c, "/api/get_pnl_report", { wallet_address: walletAddress, time_period: "30_days" });
 
     console.log(
       "ELSA RAW:",
       JSON.stringify(
         {
-          portfolio:
-            portfolioRes.status === "fulfilled"
-              ? portfolioRes.value.data
-              : { result: "rejected", ...axiosErr(portfolioRes.reason) },
-
-          balances:
-            balancesRes.status === "fulfilled"
-              ? balancesRes.value.data
-              : { result: "rejected", ...axiosErr(balancesRes.reason) },
-
-          analysis:
-            analysisRes.status === "fulfilled"
-              ? analysisRes.value.data
-              : { result: "rejected", ...axiosErr(analysisRes.reason) },
-
-          staking:
-            stakingRes.status === "fulfilled"
-              ? stakingRes.value.data
-              : { result: "rejected", ...axiosErr(stakingRes.reason) },
-
-          pnl:
-            pnlRes.status === "fulfilled"
-              ? pnlRes.value.data
-              : { result: "rejected", ...axiosErr(pnlRes.reason) },
+          portfolio: portfolioRes.ok ? portfolioRes.data : { result: "rejected", ...portfolioRes.error },
+          balances:  balancesRes.ok  ? balancesRes.data  : { result: "rejected", ...balancesRes.error },
+          analysis:  analysisRes.ok  ? analysisRes.data  : { result: "rejected", ...analysisRes.error },
+          staking:   stakingRes.ok   ? stakingRes.data   : { result: "rejected", ...stakingRes.error },
+          pnl:       pnlRes.ok       ? pnlRes.data       : { result: "rejected", ...pnlRes.error },
         },
         null,
         2
       )
     );
 
-    const portfolio = portfolioRes.status === "fulfilled" ? portfolioRes.value.data : null;
-    const balances = balancesRes.status === "fulfilled" ? balancesRes.value.data : null;
-    const analysis = analysisRes.status === "fulfilled" ? analysisRes.value.data : null;
-    const staking = stakingRes.status === "fulfilled" ? stakingRes.value.data : null;
-    const pnl = pnlRes.status === "fulfilled" ? pnlRes.value.data : null;
+    const portfolio = portfolioRes.ok ? portfolioRes.data : null;
+    const balances  = balancesRes.ok  ? balancesRes.data  : null;
+    const analysis  = analysisRes.ok  ? analysisRes.data  : null;
+    const staking   = stakingRes.ok   ? stakingRes.data   : null;
+    const pnl       = pnlRes.ok       ? pnlRes.data       : null;
 
     const tokens = (balances?.balances || [])
       .filter((b: any) => parseFloat(b.balance_usd || "0") > 0)
@@ -156,57 +144,53 @@ export async function elsaGetPortfolio(walletAddress: string): Promise<string> {
   const c = getClient();
   if (!c) return "⚠️ Elsa x402 is not configured yet. Add VALIDFI_WALLET_PRIVATE_KEY to enable live on-chain data.";
 
-  try {
-    const [portfolioRes, balancesRes, stakingRes, pnlRes] = await Promise.allSettled([
-      c.post("/api/get_portfolio", { wallet_address: walletAddress }),
-      c.post("/api/get_balances", { wallet_address: walletAddress }),
-      c.post("/api/get_stake_balances", { wallet_address: walletAddress }),
-      c.post("/api/get_pnl_report", { wallet_address: walletAddress, time_period: "30_days" }),
-    ]);
+  const portfolioRes = await paidPost<any>(c, "/api/get_portfolio", { wallet_address: walletAddress });
+  const balancesRes  = await paidPost<any>(c, "/api/get_balances", { wallet_address: walletAddress });
+  const stakingRes   = await paidPost<any>(c, "/api/get_stake_balances", { wallet_address: walletAddress });
+  const pnlRes       = await paidPost<any>(c, "/api/get_pnl_report", { wallet_address: walletAddress, time_period: "30_days" });
 
-    const portfolio = portfolioRes.status === "fulfilled" ? portfolioRes.value.data : null;
-    const balances = balancesRes.status === "fulfilled" ? balancesRes.value.data : null;
-    const staking = stakingRes.status === "fulfilled" ? stakingRes.value.data : null;
-    const pnl = pnlRes.status === "fulfilled" ? pnlRes.value.data : null;
-
-    const tokens = (balances?.balances || [])
-      .filter((b: any) => parseFloat(b.balance_usd || "0") > 0)
-      .sort((a: any, b: any) => parseFloat(b.balance_usd) - parseFloat(a.balance_usd))
-      .slice(0, 8);
-
-    const stakes = (staking?.stakes || []).slice(0, 5);
-
-    let resp = `**Your On-Chain Portfolio** ⚡ *Live via Elsa x402*\n\n`;
-    resp += `**Wallet:** \`${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}\`\n`;
-    resp += `**Total Value:** $${formatUsd(portfolio?.total_value_usd || "0")}\n`;
-    resp += `**30-Day P&L:** ${parseFloat(pnl?.total_pnl || "0") >= 0 ? "+" : ""}$${formatUsd(pnl?.total_pnl || "0")}\n`;
-    resp += `**Active Chains:** ${(portfolio?.chains || []).join(", ") || "None detected"}\n`;
-
-    if (tokens.length > 0) {
-      resp += `\n**Holdings:**\n`;
-      tokens.forEach((t: any) => {
-        resp += `- **${t.asset}** — $${formatUsd(t.balance_usd)} (${t.chain})\n`;
-      });
-    }
-
-    if (stakes.length > 0) {
-      resp += `\n**Staking Positions:**\n`;
-      stakes.forEach((s: any) => {
-        resp += `- **${s.protocol}** — ${s.staked_amount} ${s.token} (${s.apy}% APY)\n`;
-      });
-      resp += `**Total Staked:** $${formatUsd(staking?.total_staked_usd || "0")}\n`;
-    }
-
-    const defiCount = portfolio?.portfolio?.defi_positions?.length || 0;
-    if (defiCount > 0) {
-      resp += `\n**DeFi Positions:** ${defiCount} active\n`;
-    }
-
-    return resp;
-  } catch (err: any) {
-    const e = axiosErr(err);
+  if (!portfolioRes.ok) {
+    const e = portfolioRes.error;
     return `⚠️ Couldn't fetch portfolio data: ${e.message}${e.httpStatus ? ` (HTTP ${e.httpStatus})` : ""}`;
   }
+
+  const portfolio = portfolioRes.data;
+  const balances  = balancesRes.ok ? balancesRes.data : null;
+  const staking   = stakingRes.ok ? stakingRes.data : null;
+  const pnl       = pnlRes.ok ? pnlRes.data : null;
+
+  const tokens = (balances?.balances || [])
+    .filter((b: any) => parseFloat(b.balance_usd || "0") > 0)
+    .sort((a: any, b: any) => parseFloat(b.balance_usd) - parseFloat(a.balance_usd))
+    .slice(0, 8);
+
+  const stakes = (staking?.stakes || []).slice(0, 5);
+
+  let resp = `**Your On-Chain Portfolio** ⚡ *Live via Elsa x402*\n\n`;
+  resp += `**Wallet:** \`${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}\`\n`;
+  resp += `**Total Value:** $${formatUsd(portfolio?.total_value_usd || "0")}\n`;
+  resp += `**30-Day P&L:** ${parseFloat(pnl?.total_pnl || "0") >= 0 ? "+" : ""}$${formatUsd(pnl?.total_pnl || "0")}\n`;
+  resp += `**Active Chains:** ${(portfolio?.chains || []).join(", ") || "None detected"}\n`;
+
+  if (tokens.length > 0) {
+    resp += `\n**Holdings:**\n`;
+    tokens.forEach((t: any) => {
+      resp += `- **${t.asset}** — $${formatUsd(t.balance_usd)} (${t.chain})\n`;
+    });
+  }
+
+  if (stakes.length > 0) {
+    resp += `\n**Staking Positions:**\n`;
+    stakes.forEach((s: any) => {
+      resp += `- **${s.protocol}** — ${s.staked_amount} ${s.token} (${s.apy}% APY)\n`;
+    });
+    resp += `**Total Staked:** $${formatUsd(staking?.total_staked_usd || "0")}\n`;
+  }
+
+  const defiCount = portfolio?.portfolio?.defi_positions?.length || 0;
+  if (defiCount > 0) resp += `\n**DeFi Positions:** ${defiCount} active\n`;
+
+  return resp;
 }
 
 export async function elsaGetTokenPrice(query: string): Promise<string> {
@@ -419,67 +403,71 @@ export async function fetchLiveMarketContext(
     if (chain && chainTokenMap[chain]) tokenSearches.push(...chainTokenMap[chain]);
 
     if (competitors) {
-      const known = ["Uniswap", "Aave", "Lido", "Curve", "Compound", "MakerDAO", "Chainlink", "Pendle", "EigenLayer", "Jupiter", "Raydium", "Jito"];
+      const known = [
+        "Uniswap",
+        "Aave",
+        "Lido",
+        "Curve",
+        "Compound",
+        "MakerDAO",
+        "Chainlink",
+        "Pendle",
+        "EigenLayer",
+        "Jupiter",
+        "Raydium",
+        "Jito",
+      ];
       known.forEach((k) => {
         if (competitors.toLowerCase().includes(k.toLowerCase())) tokenSearches.push(k);
       });
     }
 
-    const requests: Promise<any>[] = [];
     const uniqueTokens = Array.from(new Set(tokenSearches)).slice(0, 4);
 
-    uniqueTokens.forEach((symbol) => {
-      requests.push(
-        c
-          .post("/api/search_token", { symbol_or_address: symbol, limit: 1 })
-          .then((r: any) => ({ type: "token", data: r.data }))
-          .catch(() => null)
-      );
-    });
-
-    requests.push(
-      c
-        .post("/api/get_yield_suggestions", { wallet_address: walletAddress })
-        .then((r: any) => ({ type: "yield", data: r.data }))
-        .catch(() => null)
-    );
-
     const gasChain =
-      chain?.toLowerCase().includes("ethereum") ? "ethereum" : chain?.toLowerCase().includes("base") ? "base" : chain?.toLowerCase().includes("arbitrum") ? "arbitrum" : "base";
-
-    requests.push(
-      c
-        .post("/api/get_gas_prices", { chain: gasChain })
-        .then((r: any) => ({ type: "gas", data: r.data, chain: gasChain }))
-        .catch(() => null)
-    );
-
-    const results = await Promise.all(requests);
+      chain?.toLowerCase().includes("ethereum")
+        ? "ethereum"
+        : chain?.toLowerCase().includes("base")
+        ? "base"
+        : chain?.toLowerCase().includes("arbitrum")
+        ? "arbitrum"
+        : "base";
 
     const tokens: LiveMarketContext["tokens"] = [];
     let yieldOpportunities: LiveMarketContext["yieldOpportunities"] = [];
     const gasPrices: LiveMarketContext["gasPrices"] = [];
 
-    for (const r of results) {
-      if (!r) continue;
+    // 1) Token prices (sequential to avoid multiple paid x402 txs at once)
+    for (const symbol of uniqueTokens) {
+      const r = await paidPost<any>(c, "/api/search_token", { symbol_or_address: symbol, limit: 1 });
+      if (!r?.ok) continue;
 
-      if (r.type === "token" && r.data?.result?.results?.[0]) {
-        const t = r.data.result.results[0];
-        tokens.push({ symbol: t.symbol, name: t.name, price: t.priceUSD || "N/A", chain: t.chain });
-      }
+      const t = r.data?.result?.results?.[0] || r.data?.results?.[0];
+      if (!t) continue;
 
-      if (r.type === "yield" && r.data?.suggestions) {
-        yieldOpportunities = r.data.suggestions.slice(0, 5).map((s: any) => ({
-          protocol: s.protocol,
-          token: s.token,
-          apy: s.apy,
-          chain: s.chain,
-        }));
-      }
+      tokens.push({
+        symbol: t.symbol,
+        name: t.name,
+        price: t.priceUSD || t.price || "N/A",
+        chain: t.chain || "Multi",
+      });
+    }
 
-      if (r.type === "gas") {
-        gasPrices.push({ chain: r.chain, price: r.data?.gas_price || "N/A" });
-      }
+    // 2) Yield suggestions (sequential)
+    const y = await paidPost<any>(c, "/api/get_yield_suggestions", { wallet_address: walletAddress });
+    if (y?.ok && Array.isArray(y.data?.suggestions)) {
+      yieldOpportunities = y.data.suggestions.slice(0, 5).map((s: any) => ({
+        protocol: s.protocol,
+        token: s.token,
+        apy: s.apy,
+        chain: s.chain,
+      }));
+    }
+
+    // 3) Gas prices (sequential)
+    const g = await paidPost<any>(c, "/api/get_gas_prices", { chain: gasChain });
+    if (g?.ok) {
+      gasPrices.push({ chain: gasChain, price: g.data?.gas_price || "N/A" });
     }
 
     return { tokens, yieldOpportunities, gasPrices, fetchedAt: new Date().toISOString() };
