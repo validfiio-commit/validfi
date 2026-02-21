@@ -1,32 +1,21 @@
 import axios from "axios";
-import { createWalletClient, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { base } from "viem/chains";
 import { wrapAxiosWithPaymentFromConfig } from "@x402/axios";
 import { ExactEvmScheme } from "@x402/evm";
 
 let apiClient: ReturnType<typeof axios.create> | null = null;
-// let initFailed = false;
 
 function getClient() {
   if (apiClient) return apiClient;
 
   const pk = process.env.VALIDFI_WALLET_PRIVATE_KEY;
-  console.log("PK exists:", !!pk, "length:", pk?.length, "starts with 0x:", pk?.startsWith("0x"));
   if (!pk || pk === "0x..." || pk.length < 60) {
     console.warn("VALIDFI_WALLET_PRIVATE_KEY not set or invalid — x402 features disabled");
-    // initFailed = true;
     return null;
   }
 
   try {
     const account = privateKeyToAccount(pk as `0x${string}`);
-    console.log("PAYMENT WALLET:", account.address);
-    const wallet = createWalletClient({
-      account,
-      chain: base,
-      transport: http("https://mainnet.base.org"),
-    });
 
     const axiosInstance = axios.create({
       baseURL: "https://x402-api.heyelsa.ai",
@@ -37,7 +26,7 @@ function getClient() {
       schemes: [
         {
           network: "eip155:*",
-          client: new ExactEvmScheme(wallet as any),
+          client: new ExactEvmScheme(account),
         },
       ],
     }) as any;
@@ -45,7 +34,6 @@ function getClient() {
     return apiClient;
   } catch (err: any) {
     console.error("x402 init failed:", err.message);
-    // initFailed = true;
     return null;
   }
 }
@@ -77,12 +65,6 @@ export async function fetchWalletIntelligence(walletAddress: string): Promise<Wa
       c.post("/api/get_stake_balances", { wallet_address: walletAddress }),
       c.post("/api/get_pnl_report", { wallet_address: walletAddress, time_period: "30_days" }),
     ]);
-
-    console.log("ELSA RAW:", JSON.stringify({
-    portfolio: portfolioRes.status === "fulfilled" ? portfolioRes.value.data : { status: portfolioRes.status, reason: String(portfolioRes.reason) },
-    balances: balancesRes.status === "fulfilled" ? balancesRes.value.data : { status: balancesRes.status, reason: String(balancesRes.reason) },
-    analysis: analysisRes.status === "fulfilled" ? analysisRes.value.data : { status: analysisRes.status, reason: String(analysisRes.reason) },
-  }));
 
     const portfolio = portfolioRes.status === "fulfilled" ? portfolioRes.value.data : null;
     const balances = balancesRes.status === "fulfilled" ? balancesRes.value.data : null;
@@ -274,27 +256,22 @@ export type QueryIntent = "portfolio" | "price" | "yield" | "gas" | "analyze_wal
 export function detectIntent(message: string): QueryIntent {
   const m = message.toLowerCase();
 
-  // Portfolio / holdings / balance queries
   if (/\b(portfolio|holdings?|balance|my tokens|my assets|my wallet|fetch.*portfolio|show.*portfolio|what do i (have|hold|own))\b/.test(m)) {
     return "portfolio";
   }
 
-  // Token price queries
   if (/\b(price|how much is|what('s| is) .{1,20} (worth|trading|at)|token price|current price|market price)\b/.test(m)) {
     return "price";
   }
 
-  // Yield / APY queries
   if (/\b(yield|apy|apr|staking rewards|best (yield|return|apy)|where.*(stake|earn|farm)|farming)\b/.test(m)) {
     return "yield";
   }
 
-  // Gas queries
   if (/\b(gas price|gas fee|gas cost|how much.*gas|gwei)\b/.test(m)) {
     return "gas";
   }
 
-  // Wallet analysis
   if (/\b(analyze.*wallet|wallet.*analy|on-?chain.*profile|my.*activity|transaction.*history|wallet.*score)\b/.test(m)) {
     return "analyze_wallet";
   }
@@ -304,7 +281,6 @@ export function detectIntent(message: string): QueryIntent {
 
 export function extractTokenFromMessage(message: string): string {
   const m = message.toLowerCase();
-  // Match "price of X", "how much is X", "X price"
   const patterns = [
     /price (?:of |for )?(\w+)/i,
     /how much is (\w+)/i,
@@ -316,7 +292,6 @@ export function extractTokenFromMessage(message: string): string {
     const match = message.match(p);
     if (match) return match[1].toUpperCase();
   }
-  // Fallback: look for known token symbols
   const known = ["ETH","BTC","SOL","USDC","USDT","ARB","OP","MATIC","AVAX","BNB","UNI","AAVE","LINK","PENDLE","LDO","CRV","MKR","SNX","COMP","DYDX","GMX","JUP","JTO","SUI","APT","BASE"];
   for (const t of known) {
     if (m.includes(t.toLowerCase())) return t;
@@ -333,7 +308,7 @@ export function extractChainFromMessage(message: string, defaultChain: string | 
   return defaultChain?.toLowerCase() || "base";
 }
 
-// ─── Live Market Context for Gemini (when advisor mode needs background data) ────
+// ─── Live Market Context for Gemini ────
 
 export interface LiveMarketContext {
   tokens: { symbol: string; name: string; price: string; chain: string }[];
@@ -351,34 +326,21 @@ export async function fetchLiveMarketContext(
   if (!c) return null;
 
   try {
-    // Search for tokens related to the project's ecosystem
     const tokenSearches: string[] = [];
-    // Core chain tokens
     const chainTokenMap: Record<string, string[]> = {
-      "Ethereum": ["ETH", "USDC"],
-      "Solana": ["SOL", "USDC"],
-      "Base": ["ETH", "USDC"],
-      "Arbitrum": ["ETH", "ARB"],
-      "Polygon": ["MATIC", "USDC"],
-      "Optimism": ["ETH", "OP"],
-      "Avalanche": ["AVAX", "USDC"],
-      "BNB Chain": ["BNB", "USDC"],
-      "Sui": ["SUI"],
-      "Aptos": ["APT"],
+      "Ethereum": ["ETH", "USDC"], "Solana": ["SOL", "USDC"], "Base": ["ETH", "USDC"],
+      "Arbitrum": ["ETH", "ARB"], "Polygon": ["MATIC", "USDC"], "Optimism": ["ETH", "OP"],
+      "Avalanche": ["AVAX", "USDC"], "BNB Chain": ["BNB", "USDC"], "Sui": ["SUI"], "Aptos": ["APT"],
     };
     if (chain && chainTokenMap[chain]) {
       tokenSearches.push(...chainTokenMap[chain]);
     }
-    // Extract competitor token symbols from text
     if (competitors) {
       const known = ["Uniswap", "Aave", "Lido", "Curve", "Compound", "MakerDAO", "Chainlink", "Pendle", "EigenLayer", "Jupiter", "Raydium", "Jito"];
       known.forEach(k => { if (competitors.toLowerCase().includes(k.toLowerCase())) tokenSearches.push(k); });
     }
 
-    // Parallel: token searches + yield suggestions + gas
     const requests: Promise<any>[] = [];
-
-    // Search up to 4 tokens ($0.001 each)
     const uniqueTokens = Array.from(new Set(tokenSearches)).slice(0, 4);
     uniqueTokens.forEach(symbol => {
       requests.push(
@@ -388,14 +350,12 @@ export async function fetchLiveMarketContext(
       );
     });
 
-    // Yield suggestions ($0.02)
     requests.push(
       c.post("/api/get_yield_suggestions", { wallet_address: walletAddress })
         .then(r => ({ type: "yield", data: r.data }))
         .catch(() => null)
     );
 
-    // Gas prices ($0.001)
     const gasChain = chain?.toLowerCase().includes("ethereum") ? "ethereum"
       : chain?.toLowerCase().includes("base") ? "base"
       : chain?.toLowerCase().includes("arbitrum") ? "arbitrum"
