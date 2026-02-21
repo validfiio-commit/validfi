@@ -7,7 +7,7 @@ import { ExactEvmScheme } from "@x402/evm";
 
 let apiClient: ReturnType<typeof axios.create> | null = null;
 let initFailed = false;
-
+// done
 function getClient() {
   if (apiClient) return apiClient;
   if (initFailed) return null;
