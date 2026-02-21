@@ -73,11 +73,11 @@ export async function fetchWalletIntelligence(walletAddress: string): Promise<Wa
 
   try {
     const [portfolioRes, balancesRes, analysisRes, stakingRes, pnlRes] = await Promise.allSettled([
-      c.post("/api/get_portfolio", { evm_address: walletAddress }),
-      c.post("/api/get_balances", { evm_address: walletAddress }),
-      c.post("/api/analyze_wallet", { evm_address: walletAddress }),
-      c.post("/api/get_stake_balances", { evm_address: walletAddress }),
-      c.post("/api/get_pnl_report", { evm_address: walletAddress, time_period: "30_days" }),
+      c.post("/api/get_portfolio", { wallet_address : walletAddress }),
+      c.post("/api/get_balances", { wallet_address : walletAddress }),
+      c.post("/api/analyze_wallet", { wallet_address : walletAddress }),
+      c.post("/api/get_stake_balances", { wallet_address : walletAddress }),
+      c.post("/api/get_pnl_report", { wallet_address : walletAddress, time_period: "30_days" }),
     ]);
 
     console.log("ELSA RAW:", JSON.stringify({
@@ -143,10 +143,10 @@ export async function elsaGetPortfolio(walletAddress: string): Promise<string> {
 
   try {
     const [portfolioRes, balancesRes, stakingRes, pnlRes] = await Promise.allSettled([
-      c.post("/api/get_portfolio", { evm_address: walletAddress }),
-      c.post("/api/get_balances", { evm_address: walletAddress }),
-      c.post("/api/get_stake_balances", { evm_address: walletAddress }),
-      c.post("/api/get_pnl_report", { evm_address: walletAddress, time_period: "30_days" }),
+      c.post("/api/get_portfolio", { wallet_address : walletAddress }),
+      c.post("/api/get_balances", { wallet_address : walletAddress }),
+      c.post("/api/get_stake_balances", { wallet_address : walletAddress }),
+      c.post("/api/get_pnl_report", { wallet_address : walletAddress, time_period: "30_days" }),
     ]);
 
     const portfolio = portfolioRes.status === "fulfilled" ? portfolioRes.value.data : null;
@@ -217,7 +217,7 @@ export async function elsaGetYields(walletAddress: string): Promise<string> {
   if (!c) return "⚠️ Elsa x402 not configured.";
 
   try {
-    const res = await c.post("/api/get_yield_suggestions", { evm_address: walletAddress });
+    const res = await c.post("/api/get_yield_suggestions", { wallet_address : walletAddress });
     const suggestions = res.data?.suggestions || [];
     if (suggestions.length === 0) return "No yield opportunities found right now.";
 
@@ -254,7 +254,7 @@ export async function elsaAnalyzeWallet(walletAddress: string): Promise<string> 
   if (!c) return "⚠️ Elsa x402 not configured.";
 
   try {
-    const res = await c.post("/api/analyze_wallet", { evm_address: walletAddress });
+    const res = await c.post("/api/analyze_wallet", { wallet_address : walletAddress });
     const a = res.data;
     let resp = `**Wallet Analysis** ⚡ *Live via Elsa x402*\n\n`;
     resp += `**Address:** \`${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}\`\n`;
@@ -378,7 +378,7 @@ export async function fetchLiveMarketContext(
     });
 
     requests.push(
-      c.post("/api/get_yield_suggestions", { evm_address: walletAddress })
+      c.post("/api/get_yield_suggestions", { wallet_address : walletAddress })
         .then(r => ({ type: "yield", data: r.data }))
         .catch(() => null)
     );
