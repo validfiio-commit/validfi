@@ -17,30 +17,25 @@ function getClient() {
   }
 
   try {
-    // const account = privateKeyToAccount(pk as `0x${string}`);
-    // const signer = createWalletClient({
-    //   account,
-    //   chain: base,
-    //   transport: http("https://mainnet.base.org"),
-    // }).extend(publicActions);
-
     const account = privateKeyToAccount(pk as `0x${string}`);
+
     const signer = createWalletClient({
       account,
       chain: base,
-      transport: http("https://base-mainnet.g.alchemy.com/v2/demo"),
+      transport: http("https://mainnet.base.org"),
     }).extend(publicActions);
 
-    console.log("SIGNER ADDRESS:", signer.account?.address);
+    console.log("SIGNER ADDRESS:", signer.account.address);
 
-    const balance = signer.getBalance({ address: account.address });
-    console.log("ETH BALANCE:", balance.toString());
-
-    // const client = new x402Client();
-    // registerExactEvmScheme(client, { signer: signer as any});
+    // IMPORTANT: await (this returns Promise<bigint>)
+    (async () => {
+      const eth = await signer.getBalance({ address: signer.account.address });
+      console.log("BASE ETH (GAS) BALANCE:", eth.toString());
+    })().catch(() => {});
 
     const client = new x402Client();
-    registerExactEvmScheme(client, { signer: { ...signer, address: account.address } as any });
+    // IMPORTANT: pass signer as-is
+    registerExactEvmScheme(client, { signer: signer as any });
 
     const axiosInstance = axios.create({
       baseURL: "https://x402-api.heyelsa.ai",
