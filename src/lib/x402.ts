@@ -7,7 +7,7 @@ import { ExactEvmScheme } from "@x402/evm";
 
 let apiClient: ReturnType<typeof axios.create> | null = null;
 let initFailed = false;
-// done
+
 function getClient() {
   if (apiClient) return apiClient;
   if (initFailed) return null;
@@ -372,7 +372,7 @@ export async function fetchLiveMarketContext(
     const requests: Promise<any>[] = [];
 
     // Search up to 4 tokens ($0.001 each)
-    const uniqueTokens = [...new Set(tokenSearches)].slice(0, 4);
+    const uniqueTokens = Array.from(new Set(tokenSearches)).slice(0, 4);
     uniqueTokens.forEach(symbol => {
       requests.push(
         c.post("/api/search_token", { symbol_or_address: symbol, limit: 1 })
