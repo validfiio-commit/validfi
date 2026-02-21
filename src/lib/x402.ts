@@ -1,5 +1,7 @@
 import axios from "axios";
+import { createWalletClient, http, publicActions } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
+import { base } from "viem/chains";
 import { x402Client, wrapAxiosWithPayment } from "@x402/axios";
 import { registerExactEvmScheme } from "@x402/evm/exact/client";
 
@@ -15,7 +17,12 @@ function getClient() {
   }
 
   try {
-    const signer = privateKeyToAccount(pk as `0x${string}`);
+    const account = privateKeyToAccount(pk as `0x${string}`);
+    const signer = createWalletClient({
+      account,
+      chain: base,
+      transport: http("https://mainnet.base.org"),
+    }).extend(publicActions);
 
     const client = new x402Client();
     registerExactEvmScheme(client, { signer });
