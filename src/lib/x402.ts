@@ -1,7 +1,6 @@
-// elsa-x402.ts
 import axios from "axios";
 import { withPaymentInterceptor } from "x402-axios";
-import { createPublicClient, createWalletClient, http, publicActions } from "viem";
+import { createWalletClient, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { base } from "viem/chains";
 
@@ -18,32 +17,21 @@ function getClient() {
 
   const account = privateKeyToAccount(pk);
 
-  // Wallet client used by x402-axios interceptor (signs/sends tx for micropayments)
   const walletClient = createWalletClient({
     account,
     chain: base,
     transport: http("https://mainnet.base.org"),
-  }).extend(publicActions);
+  });
 
-  if (!walletClient.account?.address) {
-    throw new Error("walletClient.account.address missing (private key/account wiring issue).");
-  }
-
-  console.log("SIGNER ADDRESS:", walletClient.account.address);
-
-  // Optional: log Base ETH balance (gas)
-  (async () => {
-    const pub = createPublicClient({ chain: base, transport: http("https://mainnet.base.org") });
-    const eth = await pub.getBalance({ address: walletClient.account.address });
-    console.log("BASE ETH (GAS) BALANCE:", eth.toString());
-  })().catch(() => {});
+  console.log("SIGNER ADDRESS:", walletClient.account?.address);
 
   const axiosInstance = axios.create({
     baseURL: "https://x402-api.heyelsa.ai",
     timeout: 30000,
   });
 
-  apiClient = withPaymentInterceptor(axiosInstance, walletClient) as any;
+  // Critical: cast argument (library viem types lag your viem types)
+  apiClient = withPaymentInterceptor(axiosInstance, walletClient as any) as any;
   return apiClient;
 }
 
