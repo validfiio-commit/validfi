@@ -1,38 +1,34 @@
 import axios from "axios";
-import { withPaymentInterceptor } from "x402-axios";
-import { createWalletClient, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { base } from "viem/chains";
-
-let apiClient: ReturnType<typeof axios.create> | null = null;
+import { x402Client, wrapAxiosWithPayment } from "@x402/axios";
+import { registerExactEvmScheme } from "@x402/evm/exact/client";
 
 function getClient() {
   if (apiClient) return apiClient;
 
-  const pk = process.env.VALIDFI_WALLET_PRIVATE_KEY as `0x${string}` | undefined;
+  const pk = process.env.VALIDFI_WALLET_PRIVATE_KEY;
   if (!pk || pk === "0x..." || pk.length < 60) {
-    console.warn("VALIDFI_WALLET_PRIVATE_KEY not set or invalid — x402 features disabled");
+    console.warn("VALIDFI_WALLET_PRIVATE_KEY not set or invalid");
     return null;
   }
 
-  const account = privateKeyToAccount(pk);
+  try {
+    const signer = privateKeyToAccount(pk as `0x${string}`);
+    
+    const client = new x402Client();
+    registerExactEvmScheme(client, { signer: signer as any });
 
-  const walletClient = createWalletClient({
-    account,
-    chain: base,
-    transport: http("https://mainnet.base.org"),
-  });
+    const axiosInstance = axios.create({
+      baseURL: "https://x402-api.heyelsa.ai",
+      timeout: 30000,
+    });
 
-  console.log("SIGNER ADDRESS:", walletClient.account?.address);
-
-  const axiosInstance = axios.create({
-    baseURL: "https://x402-api.heyelsa.ai",
-    timeout: 30000,
-  });
-
-  // Critical: cast argument (library viem types lag your viem types)
-  apiClient = withPaymentInterceptor(axiosInstance, walletClient as any) as any;
-  return apiClient;
+    apiClient = wrapAxiosWithPayment(axiosInstance, client) as any;
+    return apiClient;
+  } catch (err: any) {
+    console.error("x402 init failed:", err.message);
+    return null;
+  }
 }
 
 export interface WalletIntelligence {
