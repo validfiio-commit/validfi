@@ -1,6 +1,6 @@
 import axios from "axios";
 import { privateKeyToAccount } from "viem/accounts";
-import { x402Client, withPaymentInterceptor } from "@x402/axios";
+import { x402Client, wrapAxiosWithPayment } from "@x402/axios";
 import { registerExactEvmScheme } from "@x402/evm/exact/client";
 
 let apiClient: ReturnType<typeof axios.create> | null = null;
@@ -25,7 +25,7 @@ function getClient() {
       timeout: 30000,
     });
 
-    apiClient = withPaymentInterceptor(axiosInstance, client) as any;
+    apiClient = wrapAxiosWithPayment(axiosInstance, client) as any;
     return apiClient;
   } catch (err: any) {
     console.error("x402 init failed:", err.message);
