@@ -1,7 +1,7 @@
 import axios from "axios";
 import { privateKeyToAccount } from "viem/accounts";
-import { wrapAxiosWithPaymentFromConfig } from "@x402/axios";
-import { ExactEvmScheme } from "@x402/evm";
+import { x402Client, withPaymentInterceptor } from "@x402/axios";
+import { registerExactEvmScheme } from "@x402/evm/exact/client";
 
 let apiClient: ReturnType<typeof axios.create> | null = null;
 
@@ -15,22 +15,17 @@ function getClient() {
   }
 
   try {
-    const account = privateKeyToAccount(pk as `0x${string}`);
+    const signer = privateKeyToAccount(pk as `0x${string}`);
+
+    const client = new x402Client();
+    registerExactEvmScheme(client, { signer });
 
     const axiosInstance = axios.create({
       baseURL: "https://x402-api.heyelsa.ai",
       timeout: 30000,
     });
 
-    apiClient = wrapAxiosWithPaymentFromConfig(axiosInstance, {
-      schemes: [
-        {
-          network: "eip155:*",
-          client: new ExactEvmScheme(account),
-        },
-      ],
-    }) as any;
-
+    apiClient = withPaymentInterceptor(axiosInstance, client) as any;
     return apiClient;
   } catch (err: any) {
     console.error("x402 init failed:", err.message);
