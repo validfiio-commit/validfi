@@ -21,6 +21,7 @@ function getClient() {
 
   try {
     const account = privateKeyToAccount(pk as `0x${string}`);
+    console.log("PAYMENT WALLET:", account.address);
     const wallet = createWalletClient({
       account,
       chain: base,
