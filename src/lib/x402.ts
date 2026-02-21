@@ -15,7 +15,7 @@ function getClient() {
   console.log("PK exists:", !!pk, "length:", pk?.length, "starts with 0x:", pk?.startsWith("0x"));
   if (!pk || pk === "0x..." || pk.length < 60) {
     console.warn("VALIDFI_WALLET_PRIVATE_KEY not set or invalid — x402 features disabled");
-    initFailed = true;
+    // initFailed = true;
     return null;
   }
 
@@ -44,7 +44,7 @@ function getClient() {
     return apiClient;
   } catch (err: any) {
     console.error("x402 init failed:", err.message);
-    initFailed = true;
+    // initFailed = true;
     return null;
   }
 }
