@@ -35,6 +35,8 @@ model Idea {
   audience     String?
   status       IdeaStatus    @default(DRAFT)
   report       Json?
+  mintTxHash   String?       // Base tx hash of minted NFT
+  mintTokenId  String?       // Token ID of minted NFT
   chatMessages ChatMessage[]
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt

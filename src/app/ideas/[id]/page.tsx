@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { useWallet } from "@/components/wallet-provider";
+import MintReportCard from "@/components/mint-report-card";
 import type { Idea, Report } from "@/types";
 
 export default function IdeaPage() {
@@ -58,6 +59,9 @@ export default function IdeaPage() {
             </button>
           </div>
         </div>
+
+        {/* Mint Report Card NFT */}
+        {r && <MintReportCard ideaId={idea.id} />}
 
         {!r ? (
           <div className="text-center py-20 rounded-xl bg-surface border border-border">
