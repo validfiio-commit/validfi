@@ -28,7 +28,7 @@ function getClient() {
     const signer = createWalletClient({
       account,
       chain: base,
-      transport: http("https://mainnet.base.org"),
+      transport: http("https://base-mainnet.public.blastapi.io"),
     }).extend(publicActions);
 
     console.log("SIGNER ADDRESS:", signer.account?.address);
