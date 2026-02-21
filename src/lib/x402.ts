@@ -14,7 +14,7 @@ function getClient() {
 
   const pk = process.env.VALIDFI_WALLET_PRIVATE_KEY;
   console.log("PK exists:", !!pk, "length:", pk?.length, "starts with 0x:", pk?.startsWith("0x"));
-  if (!pk || pk === "0x..." || pk.length < 70) {
+  if (!pk || pk === "0x..." || pk.length < 60) {
     console.warn("VALIDFI_WALLET_PRIVATE_KEY not set or invalid — x402 features disabled");
     initFailed = true;
     return null;
