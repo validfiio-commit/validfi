@@ -53,7 +53,7 @@ export interface WalletIntelligence {
 function axiosErr(e: any) {
   return {
     message: e?.message ? String(e.message) : String(e),
-    status: e?.response?.status,
+    httpStatus: e?.response?.status,
     data: e?.response?.data,
   };
 }
@@ -75,11 +75,30 @@ export async function fetchWalletIntelligence(walletAddress: string): Promise<Wa
       "ELSA RAW:",
       JSON.stringify(
         {
-          portfolio: portfolioRes.status === "fulfilled" ? portfolioRes.value.data : { status: "rejected", ...axiosErr(portfolioRes.reason) },
-          balances: balancesRes.status === "fulfilled" ? balancesRes.value.data : { status: "rejected", ...axiosErr(balancesRes.reason) },
-          analysis: analysisRes.status === "fulfilled" ? analysisRes.value.data : { status: "rejected", ...axiosErr(analysisRes.reason) },
-          staking: stakingRes.status === "fulfilled" ? stakingRes.value.data : { status: "rejected", ...axiosErr(stakingRes.reason) },
-          pnl: pnlRes.status === "fulfilled" ? pnlRes.value.data : { status: "rejected", ...axiosErr(pnlRes.reason) },
+          portfolio:
+            portfolioRes.status === "fulfilled"
+              ? portfolioRes.value.data
+              : { result: "rejected", ...axiosErr(portfolioRes.reason) },
+
+          balances:
+            balancesRes.status === "fulfilled"
+              ? balancesRes.value.data
+              : { result: "rejected", ...axiosErr(balancesRes.reason) },
+
+          analysis:
+            analysisRes.status === "fulfilled"
+              ? analysisRes.value.data
+              : { result: "rejected", ...axiosErr(analysisRes.reason) },
+
+          staking:
+            stakingRes.status === "fulfilled"
+              ? stakingRes.value.data
+              : { result: "rejected", ...axiosErr(stakingRes.reason) },
+
+          pnl:
+            pnlRes.status === "fulfilled"
+              ? pnlRes.value.data
+              : { result: "rejected", ...axiosErr(pnlRes.reason) },
         },
         null,
         2
