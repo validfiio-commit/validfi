@@ -3,6 +3,8 @@ import { privateKeyToAccount } from "viem/accounts";
 import { x402Client, wrapAxiosWithPayment } from "@x402/axios";
 import { registerExactEvmScheme } from "@x402/evm/exact/client";
 
+let apiClient: ReturnType<typeof axios.create> | null = null;
+
 function getClient() {
   if (apiClient) return apiClient;
 
