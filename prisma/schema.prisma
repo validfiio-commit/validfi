@@ -1,0 +1,61 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String   @id @default(cuid())
+  wallet         String   @unique  // 0x... ethereum address (lowercase)
+  ens            String?           // optional ENS name
+  // Cached x402 wallet intelligence
+  walletData     Json?             // portfolio, balances, analysis
+  walletFetched  DateTime?         // when last fetched
+  ideas          Idea[]
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model Idea {
+  id           String        @id @default(cuid())
+  userId       String
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name         String
+  oneLiner     String?
+  category     String
+  problem      String        @db.Text
+  solution     String        @db.Text
+  chain        String?       // Ethereum, Solana, Base, etc.
+  tokenModel   String?       // Utility Token, Governance, NFT, etc.
+  stage        String        @default("idea")
+  competitors  String?       @db.Text
+  audience     String?
+  status       IdeaStatus    @default(DRAFT)
+  report       Json?
+  chatMessages ChatMessage[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@index([userId])
+}
+
+enum IdeaStatus {
+  DRAFT
+  ANALYZING
+  COMPLETED
+  FAILED
+}
+
+model ChatMessage {
+  id        String   @id @default(cuid())
+  ideaId    String
+  idea      Idea     @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+  role      String
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+
+  @@index([ideaId])
+}

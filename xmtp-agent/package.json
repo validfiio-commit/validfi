@@ -1,0 +1,17 @@
+{
+  "name": "validfi-xmtp-agent",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx index.ts",
+    "gen:keys": "tsx -e \"import crypto from 'crypto'; const wk = '0x' + crypto.randomBytes(32).toString('hex'); const ek = '0x' + crypto.randomBytes(32).toString('hex'); console.log('XMTP_WALLET_KEY=' + wk); console.log('XMTP_DB_ENCRYPTION_KEY=' + ek);\" >> .env"
+  },
+  "dependencies": {
+    "@xmtp/agent-sdk": "latest"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.7.0"
+  }
+}
