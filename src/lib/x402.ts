@@ -25,7 +25,7 @@ function getClient() {
     }).extend(publicActions);
 
     const client = new x402Client();
-    registerExactEvmScheme(client, { signer });
+    registerExactEvmScheme(client, { signer: signer as any});
 
     const axiosInstance = axios.create({
       baseURL: "https://x402-api.heyelsa.ai",
