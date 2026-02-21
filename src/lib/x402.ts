@@ -81,8 +81,16 @@ export async function fetchWalletIntelligence(walletAddress: string): Promise<Wa
     ]);
 
     console.log("ELSA RAW:", JSON.stringify({
-      portfolio: portfolioRes.status === "fulfilled" ? portfolioRes.value.data : { status: portfolioRes.status, reason: String(portfolioRes.reason) },
-      balances: balancesRes.status === "fulfilled" ? balancesRes.value.data : { status: balancesRes.status, reason: String(balancesRes.reason) },
+      portfolio: portfolioRes.status === "fulfilled" ? portfolioRes.value.data : { 
+        status: portfolioRes.status, 
+        reason: String(portfolioRes.reason),
+        response: (portfolioRes as any).reason?.response?.data 
+      },
+      balances: balancesRes.status === "fulfilled" ? balancesRes.value.data : { 
+        status: balancesRes.status, 
+        reason: String(balancesRes.reason),
+        response: (balancesRes as any).reason?.response?.data 
+      },
     }));
 
     const portfolio = portfolioRes.status === "fulfilled" ? portfolioRes.value.data : null;
