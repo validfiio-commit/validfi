@@ -1,53 +1,50 @@
+// elsa-x402.ts
 import axios from "axios";
-import { createWalletClient, http, publicActions } from "viem";
+import { withPaymentInterceptor } from "x402-axios";
+import { createPublicClient, createWalletClient, http, publicActions } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { base } from "viem/chains";
-import { x402Client, wrapAxiosWithPayment } from "@x402/axios";
-import { registerExactEvmScheme } from "@x402/evm/exact/client";
 
 let apiClient: ReturnType<typeof axios.create> | null = null;
 
 function getClient() {
   if (apiClient) return apiClient;
 
-  const pk = process.env.VALIDFI_WALLET_PRIVATE_KEY;
+  const pk = process.env.VALIDFI_WALLET_PRIVATE_KEY as `0x${string}` | undefined;
   if (!pk || pk === "0x..." || pk.length < 60) {
     console.warn("VALIDFI_WALLET_PRIVATE_KEY not set or invalid — x402 features disabled");
     return null;
   }
 
-  try {
-    const account = privateKeyToAccount(pk as `0x${string}`);
+  const account = privateKeyToAccount(pk);
 
-    const signer = createWalletClient({
-      account,
-      chain: base,
-      transport: http("https://mainnet.base.org"),
-    }).extend(publicActions);
+  // Wallet client used by x402-axios interceptor (signs/sends tx for micropayments)
+  const walletClient = createWalletClient({
+    account,
+    chain: base,
+    transport: http("https://mainnet.base.org"),
+  }).extend(publicActions);
 
-    console.log("SIGNER ADDRESS:", signer.account.address);
-
-    // IMPORTANT: await (this returns Promise<bigint>)
-    (async () => {
-      const eth = await signer.getBalance({ address: signer.account.address });
-      console.log("BASE ETH (GAS) BALANCE:", eth.toString());
-    })().catch(() => {});
-
-    const client = new x402Client();
-    // IMPORTANT: pass signer as-is
-    registerExactEvmScheme(client, { signer: signer as any });
-
-    const axiosInstance = axios.create({
-      baseURL: "https://x402-api.heyelsa.ai",
-      timeout: 30000,
-    });
-
-    apiClient = wrapAxiosWithPayment(axiosInstance, client) as any;
-    return apiClient;
-  } catch (err: any) {
-    console.error("x402 init failed:", err.message);
-    return null;
+  if (!walletClient.account?.address) {
+    throw new Error("walletClient.account.address missing (private key/account wiring issue).");
   }
+
+  console.log("SIGNER ADDRESS:", walletClient.account.address);
+
+  // Optional: log Base ETH balance (gas)
+  (async () => {
+    const pub = createPublicClient({ chain: base, transport: http("https://mainnet.base.org") });
+    const eth = await pub.getBalance({ address: walletClient.account.address });
+    console.log("BASE ETH (GAS) BALANCE:", eth.toString());
+  })().catch(() => {});
+
+  const axiosInstance = axios.create({
+    baseURL: "https://x402-api.heyelsa.ai",
+    timeout: 30000,
+  });
+
+  apiClient = withPaymentInterceptor(axiosInstance, walletClient) as any;
+  return apiClient;
 }
 
 export interface WalletIntelligence {
@@ -65,31 +62,41 @@ export interface WalletIntelligence {
   fetchedAt: string;
 }
 
+function axiosErr(e: any) {
+  return {
+    message: e?.message ? String(e.message) : String(e),
+    status: e?.response?.status,
+    data: e?.response?.data,
+  };
+}
+
 export async function fetchWalletIntelligence(walletAddress: string): Promise<WalletIntelligence | null> {
   const c = getClient();
   if (!c) return null;
 
   try {
     const [portfolioRes, balancesRes, analysisRes, stakingRes, pnlRes] = await Promise.allSettled([
-      c.post("/api/get_portfolio", { wallet_address : walletAddress }),
-      c.post("/api/get_balances", { wallet_address : walletAddress }),
-      c.post("/api/analyze_wallet", { wallet_address : walletAddress }),
-      c.post("/api/get_stake_balances", { wallet_address : walletAddress }),
-      c.post("/api/get_pnl_report", { wallet_address : walletAddress, time_period: "30_days" }),
+      c.post("/api/get_portfolio", { wallet_address: walletAddress }),
+      c.post("/api/get_balances", { wallet_address: walletAddress }),
+      c.post("/api/analyze_wallet", { wallet_address: walletAddress }),
+      c.post("/api/get_stake_balances", { wallet_address: walletAddress }),
+      c.post("/api/get_pnl_report", { wallet_address: walletAddress, time_period: "30_days" }),
     ]);
 
-    console.log("ELSA RAW:", JSON.stringify({
-      portfolio: portfolioRes.status === "fulfilled" ? portfolioRes.value.data : { 
-        status: portfolioRes.status, 
-        reason: String(portfolioRes.reason),
-        response: (portfolioRes as any).reason?.response?.data 
-      },
-      balances: balancesRes.status === "fulfilled" ? balancesRes.value.data : { 
-        status: balancesRes.status, 
-        reason: String(balancesRes.reason),
-        response: (balancesRes as any).reason?.response?.data 
-      },
-    }));
+    console.log(
+      "ELSA RAW:",
+      JSON.stringify(
+        {
+          portfolio: portfolioRes.status === "fulfilled" ? portfolioRes.value.data : { status: "rejected", ...axiosErr(portfolioRes.reason) },
+          balances: balancesRes.status === "fulfilled" ? balancesRes.value.data : { status: "rejected", ...axiosErr(balancesRes.reason) },
+          analysis: analysisRes.status === "fulfilled" ? analysisRes.value.data : { status: "rejected", ...axiosErr(analysisRes.reason) },
+          staking: stakingRes.status === "fulfilled" ? stakingRes.value.data : { status: "rejected", ...axiosErr(stakingRes.reason) },
+          pnl: pnlRes.status === "fulfilled" ? pnlRes.value.data : { status: "rejected", ...axiosErr(pnlRes.reason) },
+        },
+        null,
+        2
+      )
+    );
 
     const portfolio = portfolioRes.status === "fulfilled" ? portfolioRes.value.data : null;
     const balances = balancesRes.status === "fulfilled" ? balancesRes.value.data : null;
@@ -104,7 +111,10 @@ export async function fetchWalletIntelligence(walletAddress: string): Promise<Wa
       .map((b: any) => ({ symbol: b.asset, balanceUsd: b.balance_usd, chain: b.chain }));
 
     const stakes = (staking?.stakes || []).map((s: any) => ({
-      protocol: s.protocol, token: s.token, amount: s.staked_amount, apy: s.apy,
+      protocol: s.protocol,
+      token: s.token,
+      amount: s.staked_amount,
+      apy: s.apy,
     }));
 
     return {
@@ -122,7 +132,7 @@ export async function fetchWalletIntelligence(walletAddress: string): Promise<Wa
       fetchedAt: new Date().toISOString(),
     };
   } catch (err: any) {
-    console.error("x402 fetch error:", err.message);
+    console.error("x402 fetch error:", err?.message || err);
     return null;
   }
 }
@@ -141,10 +151,10 @@ export async function elsaGetPortfolio(walletAddress: string): Promise<string> {
 
   try {
     const [portfolioRes, balancesRes, stakingRes, pnlRes] = await Promise.allSettled([
-      c.post("/api/get_portfolio", { wallet_address : walletAddress }),
-      c.post("/api/get_balances", { wallet_address : walletAddress }),
-      c.post("/api/get_stake_balances", { wallet_address : walletAddress }),
-      c.post("/api/get_pnl_report", { wallet_address : walletAddress, time_period: "30_days" }),
+      c.post("/api/get_portfolio", { wallet_address: walletAddress }),
+      c.post("/api/get_balances", { wallet_address: walletAddress }),
+      c.post("/api/get_stake_balances", { wallet_address: walletAddress }),
+      c.post("/api/get_pnl_report", { wallet_address: walletAddress, time_period: "30_days" }),
     ]);
 
     const portfolio = portfolioRes.status === "fulfilled" ? portfolioRes.value.data : null;
@@ -187,7 +197,8 @@ export async function elsaGetPortfolio(walletAddress: string): Promise<string> {
 
     return resp;
   } catch (err: any) {
-    return `⚠️ Couldn't fetch portfolio data: ${err.message}`;
+    const e = axiosErr(err);
+    return `⚠️ Couldn't fetch portfolio data: ${e.message}${e.status ? ` (HTTP ${e.status})` : ""}`;
   }
 }
 
@@ -206,7 +217,8 @@ export async function elsaGetTokenPrice(query: string): Promise<string> {
     });
     return resp;
   } catch (err: any) {
-    return `⚠️ Token search failed: ${err.message}`;
+    const e = axiosErr(err);
+    return `⚠️ Token search failed: ${e.message}${e.status ? ` (HTTP ${e.status})` : ""}`;
   }
 }
 
@@ -215,7 +227,7 @@ export async function elsaGetYields(walletAddress: string): Promise<string> {
   if (!c) return "⚠️ Elsa x402 not configured.";
 
   try {
-    const res = await c.post("/api/get_yield_suggestions", { wallet_address : walletAddress });
+    const res = await c.post("/api/get_yield_suggestions", { wallet_address: walletAddress });
     const suggestions = res.data?.suggestions || [];
     if (suggestions.length === 0) return "No yield opportunities found right now.";
 
@@ -225,7 +237,8 @@ export async function elsaGetYields(walletAddress: string): Promise<string> {
     });
     return resp;
   } catch (err: any) {
-    return `⚠️ Yield data unavailable: ${err.message}`;
+    const e = axiosErr(err);
+    return `⚠️ Yield data unavailable: ${e.message}${e.status ? ` (HTTP ${e.status})` : ""}`;
   }
 }
 
@@ -234,8 +247,12 @@ export async function elsaGetGas(chain: string): Promise<string> {
   if (!c) return "⚠️ Elsa x402 not configured.";
 
   const chainMap: Record<string, string> = {
-    "ethereum": "ethereum", "base": "base", "arbitrum": "arbitrum",
-    "polygon": "polygon", "optimism": "optimism", "avalanche": "avalanche",
+    ethereum: "ethereum",
+    base: "base",
+    arbitrum: "arbitrum",
+    polygon: "polygon",
+    optimism: "optimism",
+    avalanche: "avalanche",
   };
   const normalized = chainMap[chain.toLowerCase()] || "base";
 
@@ -243,7 +260,8 @@ export async function elsaGetGas(chain: string): Promise<string> {
     const res = await c.post("/api/get_gas_prices", { chain: normalized });
     return `**Gas Price on ${normalized}:** ${res.data?.gas_price || "N/A"} gwei ⚡ *Live via Elsa x402*`;
   } catch (err: any) {
-    return `⚠️ Gas data unavailable: ${err.message}`;
+    const e = axiosErr(err);
+    return `⚠️ Gas data unavailable: ${e.message}${e.status ? ` (HTTP ${e.status})` : ""}`;
   }
 }
 
@@ -252,8 +270,9 @@ export async function elsaAnalyzeWallet(walletAddress: string): Promise<string> 
   if (!c) return "⚠️ Elsa x402 not configured.";
 
   try {
-    const res = await c.post("/api/analyze_wallet", { wallet_address : walletAddress });
+    const res = await c.post("/api/analyze_wallet", { wallet_address: walletAddress });
     const a = res.data;
+
     let resp = `**Wallet Analysis** ⚡ *Live via Elsa x402*\n\n`;
     resp += `**Address:** \`${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}\`\n`;
     resp += `**Wallet Age:** ${a?.wallet_age || "Unknown"}\n`;
@@ -263,14 +282,15 @@ export async function elsaAnalyzeWallet(walletAddress: string): Promise<string> 
     if (a?.summary) resp += `\n${a.summary}\n`;
     return resp;
   } catch (err: any) {
-    return `⚠️ Wallet analysis failed: ${err.message}`;
+    const e = axiosErr(err);
+    return `⚠️ Wallet analysis failed: ${e.message}${e.status ? ` (HTTP ${e.status})` : ""}`;
   }
 }
 
 function formatUsd(v: string): string {
   const n = parseFloat(v || "0");
-  if (Math.abs(n) >= 1000000) return `${(n / 1000000).toFixed(2)}M`;
-  if (Math.abs(n) >= 1000) return `${(n / 1000).toFixed(1)}K`;
+  if (Math.abs(n) >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
+  if (Math.abs(n) >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
   return n.toFixed(2);
 }
 
@@ -284,23 +304,18 @@ export function detectIntent(message: string): QueryIntent {
   if (/\b(portfolio|holdings?|balance|my tokens|my assets|my wallet|fetch.*portfolio|show.*portfolio|what do i (have|hold|own))\b/.test(m)) {
     return "portfolio";
   }
-
   if (/\b(price|how much is|what('s| is) .{1,20} (worth|trading|at)|token price|current price|market price)\b/.test(m)) {
     return "price";
   }
-
   if (/\b(yield|apy|apr|staking rewards|best (yield|return|apy)|where.*(stake|earn|farm)|farming)\b/.test(m)) {
     return "yield";
   }
-
   if (/\b(gas price|gas fee|gas cost|how much.*gas|gwei)\b/.test(m)) {
     return "gas";
   }
-
   if (/\b(analyze.*wallet|wallet.*analy|on-?chain.*profile|my.*activity|transaction.*history|wallet.*score)\b/.test(m)) {
     return "analyze_wallet";
   }
-
   return "advisor";
 }
 
@@ -313,11 +328,40 @@ export function extractTokenFromMessage(message: string): string {
     /(\w+) price/i,
     /(\w+) token/i,
   ];
+
   for (const p of patterns) {
     const match = message.match(p);
     if (match) return match[1].toUpperCase();
   }
-  const known = ["ETH","BTC","SOL","USDC","USDT","ARB","OP","MATIC","AVAX","BNB","UNI","AAVE","LINK","PENDLE","LDO","CRV","MKR","SNX","COMP","DYDX","GMX","JUP","JTO","SUI","APT","BASE"];
+
+  const known = [
+    "ETH",
+    "BTC",
+    "SOL",
+    "USDC",
+    "USDT",
+    "ARB",
+    "OP",
+    "MATIC",
+    "AVAX",
+    "BNB",
+    "UNI",
+    "AAVE",
+    "LINK",
+    "PENDLE",
+    "LDO",
+    "CRV",
+    "MKR",
+    "SNX",
+    "COMP",
+    "DYDX",
+    "GMX",
+    "JUP",
+    "JTO",
+    "SUI",
+    "APT",
+    "BASE",
+  ];
   for (const t of known) {
     if (m.includes(t.toLowerCase())) return t;
   }
@@ -326,7 +370,7 @@ export function extractTokenFromMessage(message: string): string {
 
 export function extractChainFromMessage(message: string, defaultChain: string | null): string {
   const m = message.toLowerCase();
-  const chains = ["ethereum","base","arbitrum","polygon","optimism","avalanche","solana","bnb"];
+  const chains = ["ethereum", "base", "arbitrum", "polygon", "optimism", "avalanche", "solana", "bnb"];
   for (const c of chains) {
     if (m.includes(c)) return c;
   }
@@ -353,41 +397,53 @@ export async function fetchLiveMarketContext(
   try {
     const tokenSearches: string[] = [];
     const chainTokenMap: Record<string, string[]> = {
-      "Ethereum": ["ETH", "USDC"], "Solana": ["SOL", "USDC"], "Base": ["ETH", "USDC"],
-      "Arbitrum": ["ETH", "ARB"], "Polygon": ["MATIC", "USDC"], "Optimism": ["ETH", "OP"],
-      "Avalanche": ["AVAX", "USDC"], "BNB Chain": ["BNB", "USDC"], "Sui": ["SUI"], "Aptos": ["APT"],
+      Ethereum: ["ETH", "USDC"],
+      Solana: ["SOL", "USDC"],
+      Base: ["ETH", "USDC"],
+      Arbitrum: ["ETH", "ARB"],
+      Polygon: ["MATIC", "USDC"],
+      Optimism: ["ETH", "OP"],
+      Avalanche: ["AVAX", "USDC"],
+      "BNB Chain": ["BNB", "USDC"],
+      Sui: ["SUI"],
+      Aptos: ["APT"],
     };
-    if (chain && chainTokenMap[chain]) {
-      tokenSearches.push(...chainTokenMap[chain]);
-    }
+
+    if (chain && chainTokenMap[chain]) tokenSearches.push(...chainTokenMap[chain]);
+
     if (competitors) {
       const known = ["Uniswap", "Aave", "Lido", "Curve", "Compound", "MakerDAO", "Chainlink", "Pendle", "EigenLayer", "Jupiter", "Raydium", "Jito"];
-      known.forEach(k => { if (competitors.toLowerCase().includes(k.toLowerCase())) tokenSearches.push(k); });
+      known.forEach((k) => {
+        if (competitors.toLowerCase().includes(k.toLowerCase())) tokenSearches.push(k);
+      });
     }
 
     const requests: Promise<any>[] = [];
     const uniqueTokens = Array.from(new Set(tokenSearches)).slice(0, 4);
-    uniqueTokens.forEach(symbol => {
+
+    uniqueTokens.forEach((symbol) => {
       requests.push(
-        c.post("/api/search_token", { symbol_or_address: symbol, limit: 1 })
-          .then(r => ({ type: "token", data: r.data }))
+        c
+          .post("/api/search_token", { symbol_or_address: symbol, limit: 1 })
+          .then((r: any) => ({ type: "token", data: r.data }))
           .catch(() => null)
       );
     });
 
     requests.push(
-      c.post("/api/get_yield_suggestions", { wallet_address : walletAddress })
-        .then(r => ({ type: "yield", data: r.data }))
+      c
+        .post("/api/get_yield_suggestions", { wallet_address: walletAddress })
+        .then((r: any) => ({ type: "yield", data: r.data }))
         .catch(() => null)
     );
 
-    const gasChain = chain?.toLowerCase().includes("ethereum") ? "ethereum"
-      : chain?.toLowerCase().includes("base") ? "base"
-      : chain?.toLowerCase().includes("arbitrum") ? "arbitrum"
-      : "base";
+    const gasChain =
+      chain?.toLowerCase().includes("ethereum") ? "ethereum" : chain?.toLowerCase().includes("base") ? "base" : chain?.toLowerCase().includes("arbitrum") ? "arbitrum" : "base";
+
     requests.push(
-      c.post("/api/get_gas_prices", { chain: gasChain })
-        .then(r => ({ type: "gas", data: r.data, chain: gasChain }))
+      c
+        .post("/api/get_gas_prices", { chain: gasChain })
+        .then((r: any) => ({ type: "gas", data: r.data, chain: gasChain }))
         .catch(() => null)
     );
 
@@ -399,15 +455,21 @@ export async function fetchLiveMarketContext(
 
     for (const r of results) {
       if (!r) continue;
+
       if (r.type === "token" && r.data?.result?.results?.[0]) {
         const t = r.data.result.results[0];
         tokens.push({ symbol: t.symbol, name: t.name, price: t.priceUSD || "N/A", chain: t.chain });
       }
+
       if (r.type === "yield" && r.data?.suggestions) {
         yieldOpportunities = r.data.suggestions.slice(0, 5).map((s: any) => ({
-          protocol: s.protocol, token: s.token, apy: s.apy, chain: s.chain,
+          protocol: s.protocol,
+          token: s.token,
+          apy: s.apy,
+          chain: s.chain,
         }));
       }
+
       if (r.type === "gas") {
         gasPrices.push({ chain: r.chain, price: r.data?.gas_price || "N/A" });
       }
@@ -415,7 +477,7 @@ export async function fetchLiveMarketContext(
 
     return { tokens, yieldOpportunities, gasPrices, fetchedAt: new Date().toISOString() };
   } catch (err: any) {
-    console.error("x402 market context error:", err.message);
+    console.error("x402 market context error:", err?.message || err);
     return null;
   }
 }
