@@ -7,7 +7,7 @@ import { registerExactEvmScheme } from "@x402/evm/exact/client";
 
 let apiClient: ReturnType<typeof axios.create> | null = null;
 
-async function getClient() {
+function getClient() {
   if (apiClient) return apiClient;
 
   const pk = process.env.VALIDFI_WALLET_PRIVATE_KEY;
@@ -28,12 +28,12 @@ async function getClient() {
     const signer = createWalletClient({
       account,
       chain: base,
-      transport: http("https://base.meowrpc.com"),
+      transport: http("https://mainnet.base.org"),
     }).extend(publicActions);
 
     console.log("SIGNER ADDRESS:", signer.account?.address);
 
-    const balance = await signer.getBalance({ address: account.address });
+    const balance = signer.getBalance({ address: account.address });
     console.log("ETH BALANCE:", balance.toString());
 
     // const client = new x402Client();
