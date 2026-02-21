@@ -59,7 +59,7 @@ export async function verifyToken(token: string): Promise<{ wallet: string } | n
 }
 
 export async function getCurrentUser() {
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
   const token = cookieStore.get(COOKIE_NAME)?.value;
   if (!token) return null;
 
