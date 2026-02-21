@@ -1,5 +1,7 @@
 import axios from "axios";
+import { createWalletClient, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
+import { base } from "viem/chains";
 import { wrapAxiosWithPaymentFromConfig } from "@x402/axios";
 import { ExactEvmScheme } from "@x402/evm";
 
@@ -19,6 +21,11 @@ function getClient() {
 
   try {
     const account = privateKeyToAccount(pk as `0x${string}`);
+    const wallet = createWalletClient({
+      account,
+      chain: base,
+      transport: http("https://mainnet.base.org"),
+    });
 
     const axiosInstance = axios.create({
       baseURL: "https://x402-api.heyelsa.ai",
@@ -29,7 +36,7 @@ function getClient() {
       schemes: [
         {
           network: "eip155:*",
-          client: new ExactEvmScheme(account),
+          client: new ExactEvmScheme(wallet as any),
         },
       ],
     }) as any;
