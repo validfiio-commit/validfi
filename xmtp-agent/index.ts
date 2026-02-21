@@ -1,7 +1,7 @@
 import { Agent, isText } from "@xmtp/agent-sdk";
 
 // Load env
-process.loadEnvFile?.(".env");
+try { process.loadEnvFile?.(".env"); } catch {}
 
 const agent = await Agent.createFromEnv();
 
