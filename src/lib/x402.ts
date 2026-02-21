@@ -205,7 +205,7 @@ export async function elsaGetPortfolio(walletAddress: string): Promise<string> {
     return resp;
   } catch (err: any) {
     const e = axiosErr(err);
-    return `⚠️ Couldn't fetch portfolio data: ${e.message}${e.status ? ` (HTTP ${e.status})` : ""}`;
+    return `⚠️ Couldn't fetch portfolio data: ${e.message}${e.httpStatus ? ` (HTTP ${e.httpStatus})` : ""}`;
   }
 }
 
@@ -225,7 +225,7 @@ export async function elsaGetTokenPrice(query: string): Promise<string> {
     return resp;
   } catch (err: any) {
     const e = axiosErr(err);
-    return `⚠️ Token search failed: ${e.message}${e.status ? ` (HTTP ${e.status})` : ""}`;
+    return `⚠️ Token search failed: ${e.message}${e.httpStatus ? ` (HTTP ${e.httpStatus})` : ""}`;
   }
 }
 
@@ -245,7 +245,7 @@ export async function elsaGetYields(walletAddress: string): Promise<string> {
     return resp;
   } catch (err: any) {
     const e = axiosErr(err);
-    return `⚠️ Yield data unavailable: ${e.message}${e.status ? ` (HTTP ${e.status})` : ""}`;
+    return `⚠️ Yield data unavailable: ${e.message}${e.httpStatus ? ` (HTTP ${e.httpStatus})` : ""}`;
   }
 }
 
@@ -268,7 +268,7 @@ export async function elsaGetGas(chain: string): Promise<string> {
     return `**Gas Price on ${normalized}:** ${res.data?.gas_price || "N/A"} gwei ⚡ *Live via Elsa x402*`;
   } catch (err: any) {
     const e = axiosErr(err);
-    return `⚠️ Gas data unavailable: ${e.message}${e.status ? ` (HTTP ${e.status})` : ""}`;
+    return `⚠️ Gas data unavailable: ${e.message}${e.httpStatus ? ` (HTTP ${e.httpStatus})` : ""}`;
   }
 }
 
@@ -290,7 +290,7 @@ export async function elsaAnalyzeWallet(walletAddress: string): Promise<string> 
     return resp;
   } catch (err: any) {
     const e = axiosErr(err);
-    return `⚠️ Wallet analysis failed: ${e.message}${e.status ? ` (HTTP ${e.status})` : ""}`;
+    return `⚠️ Wallet analysis failed: ${e.message}${e.httpStatus ? ` (HTTP ${e.httpStatus})` : ""}`;
   }
 }
 
