@@ -77,6 +77,13 @@ export async function fetchWalletIntelligence(walletAddress: string): Promise<Wa
       c.post("/api/get_pnl_report", { wallet_address: walletAddress, time_period: "30_days" }),
     ]);
 
+    // DEBUG — remove after testing
+    console.log("ELSA RAW:", JSON.stringify({
+      portfolio: portfolioRes.status === "fulfilled" ? portfolioRes.value.data : portfolioRes,
+      balances: balancesRes.status === "fulfilled" ? balancesRes.value.data : balancesRes,
+      analysis: analysisRes.status === "fulfilled" ? analysisRes.value.data : analysisRes,
+    }));
+
     const portfolio = portfolioRes.status === "fulfilled" ? portfolioRes.value.data : null;
     const balances = balancesRes.status === "fulfilled" ? balancesRes.value.data : null;
     const analysis = analysisRes.status === "fulfilled" ? analysisRes.value.data : null;
