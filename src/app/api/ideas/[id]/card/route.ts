@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 // Public — no auth required (for social card previews)
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const idea = await prisma.idea.findUnique({
-    where: { id: params.id },
+    where: { id: id },
     include: { user: { select: { wallet: true, walletData: true } } },
   });
 

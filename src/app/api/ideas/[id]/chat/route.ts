@@ -7,25 +7,27 @@ import {
   elsaGetPortfolio, elsaGetTokenPrice, elsaGetYields, elsaGetGas, elsaAnalyzeWallet,
 } from "@/lib/x402";
 
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const idea = await prisma.idea.findFirst({ where: { id: params.id, userId: user.id } });
+  const idea = await prisma.idea.findFirst({ where: { id: id, userId: user.id } });
   if (!idea) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  const messages = await prisma.chatMessage.findMany({ where: { ideaId: params.id }, orderBy: { createdAt: "asc" }, take: 100 });
+  const messages = await prisma.chatMessage.findMany({ where: { ideaId: id }, orderBy: { createdAt: "asc" }, take: 100 });
   return NextResponse.json(messages);
 }
 
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const idea = await prisma.idea.findFirst({ where: { id: params.id, userId: user.id } });
+  const { id } = await params;
+  const idea = await prisma.idea.findFirst({ where: { id: id, userId: user.id } });
   if (!idea) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const { message } = await req.json();
   if (!message?.trim()) return NextResponse.json({ error: "Message required" }, { status: 400 });
 
-  await prisma.chatMessage.create({ data: { ideaId: params.id, role: "user", content: message } });
+  await prisma.chatMessage.create({ data: { ideaId: id, role: "user", content: message } });
 
   // ─── Smart Router: detect intent ───
   const intent = detectIntent(message);
@@ -71,14 +73,14 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         }
       }
 
-      const history = await prisma.chatMessage.findMany({ where: { ideaId: params.id }, orderBy: { createdAt: "asc" }, take: 50 });
+      const history = await prisma.chatMessage.findMany({ where: { ideaId: id }, orderBy: { createdAt: "asc" }, take: 50 });
       const apiHistory = history.map((m) => ({ role: m.role === "user" ? "user" : "assistant", content: m.content }));
 
       response = await chatWithAdvisor(idea, idea.report, apiHistory.slice(0, -1), message, user.wallet, walletData);
       source = "gemini";
     }
 
-    const saved = await prisma.chatMessage.create({ data: { ideaId: params.id, role: "assistant", content: response } });
+    const saved = await prisma.chatMessage.create({ data: { ideaId: id, role: "assistant", content: response } });
     return NextResponse.json({ role: "assistant", content: response, id: saved.id, source });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });

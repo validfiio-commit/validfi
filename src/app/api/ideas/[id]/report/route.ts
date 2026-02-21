@@ -4,10 +4,11 @@ import { prisma } from "@/lib/prisma";
 import { generateReport } from "@/lib/gemini";
 import { fetchWalletIntelligence, isStale } from "@/lib/x402";
 
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const idea = await prisma.idea.findFirst({ where: { id: params.id, userId: user.id } });
+  const idea = await prisma.idea.findFirst({ where: { id: id, userId: user.id } });
   if (!idea) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   let walletData = user.walletData as any;

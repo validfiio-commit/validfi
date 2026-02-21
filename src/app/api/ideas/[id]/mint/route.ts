@@ -39,12 +39,13 @@ const MINT_ABI = [
   },
 ] as const;
 
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const idea = await prisma.idea.findFirst({
-    where: { id: params.id, userId: user.id, status: "COMPLETED" },
+    where: { id: id, userId: user.id, status: "COMPLETED" },
   });
   if (!idea || !idea.report) return NextResponse.json({ error: "Report not found" }, { status: 404 });
 
@@ -78,7 +79,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 }
 
 // Save mint transaction after user mints
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -86,7 +88,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   if (!txHash) return NextResponse.json({ error: "Missing txHash" }, { status: 400 });
 
   await prisma.idea.updateMany({
-    where: { id: params.id, userId: user.id },
+    where: { id: id, userId: user.id },
     data: { mintTxHash: txHash, mintTokenId: tokenId?.toString() || null },
   });
 
