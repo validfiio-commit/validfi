@@ -37,6 +37,8 @@ export async function POST() {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  console.log("USER WALLET:", user.wallet);
+
   const data = await fetchWalletIntelligence(user.wallet);
   if (data) {
     await prisma.user.update({
