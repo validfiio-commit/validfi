@@ -6,11 +6,10 @@ import { wrapAxiosWithPaymentFromConfig } from "@x402/axios";
 import { ExactEvmScheme } from "@x402/evm";
 
 let apiClient: ReturnType<typeof axios.create> | null = null;
-let initFailed = false;
+// let initFailed = false;
 
 function getClient() {
   if (apiClient) return apiClient;
-  if (initFailed) return null;
 
   const pk = process.env.VALIDFI_WALLET_PRIVATE_KEY;
   console.log("PK exists:", !!pk, "length:", pk?.length, "starts with 0x:", pk?.startsWith("0x"));
