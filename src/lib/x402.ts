@@ -64,36 +64,27 @@ async function paidPost<T = any>(c: any, url: string, body: any) {
 }
 
 export async function fetchWalletIntelligence(walletAddress: string): Promise<WalletIntelligence | null> {
+  apiClient = null;
   const c = getClient();
   if (!c) return null;
 
   try {
-    const portfolioRes = await paidPost<any>(c, "/api/get_portfolio", { wallet_address: walletAddress });
+    // Sequential calls to avoid x402 nonce_already_used errors
     const balancesRes  = await paidPost<any>(c, "/api/get_balances", { wallet_address: walletAddress });
     const analysisRes  = await paidPost<any>(c, "/api/analyze_wallet", { wallet_address: walletAddress });
-    const stakingRes   = await paidPost<any>(c, "/api/get_stake_balances", { wallet_address: walletAddress });
     const pnlRes       = await paidPost<any>(c, "/api/get_pnl_report", { wallet_address: walletAddress, time_period: "30_days" });
-
-    console.log(
-      "ELSA RAW:",
-      JSON.stringify(
-        {
-          portfolio: portfolioRes.ok ? portfolioRes.data : { result: "rejected", ...portfolioRes.error },
-          balances:  balancesRes.ok  ? balancesRes.data  : { result: "rejected", ...balancesRes.error },
-          analysis:  analysisRes.ok  ? analysisRes.data  : { result: "rejected", ...analysisRes.error },
-          staking:   stakingRes.ok   ? stakingRes.data   : { result: "rejected", ...stakingRes.error },
-          pnl:       pnlRes.ok       ? pnlRes.data       : { result: "rejected", ...pnlRes.error },
-        },
-        null,
-        2
-      )
-    );
+    const portfolioRes = await paidPost<any>(c, "/api/get_portfolio", { wallet_address: walletAddress });
+    const stakingRes   = await paidPost<any>(c, "/api/get_stake_balances", { wallet_address: walletAddress });
 
     const portfolio = portfolioRes.ok ? portfolioRes.data : null;
     const balances  = balancesRes.ok  ? balancesRes.data  : null;
     const analysis  = analysisRes.ok  ? analysisRes.data  : null;
     const staking   = stakingRes.ok   ? stakingRes.data   : null;
     const pnl       = pnlRes.ok       ? pnlRes.data       : null;
+
+    // Elsa wraps analysis in .analysis and pnl in .pnl_report
+    const analysisData = analysis?.analysis || analysis;
+    const pnlData = pnl?.pnl_report || pnl;
 
     const tokens = (balances?.balances || [])
       .filter((b: any) => parseFloat(b.balance_usd || "0") > 0)
@@ -108,18 +99,26 @@ export async function fetchWalletIntelligence(walletAddress: string): Promise<Wa
       apy: s.apy,
     }));
 
+    // Calculate total from balances as fallback when portfolio endpoint fails
+    const totalFromBalances = (balances?.balances || [])
+      .reduce((sum: number, b: any) => sum + parseFloat(b.balance_usd || "0"), 0)
+      .toFixed(2);
+
+    // Extract chains from balances as fallback
+    const chainsFromBalances = [...new Set((balances?.balances || []).map((b: any) => b.chain))] as string[];
+
     return {
-      totalValueUsd: portfolio?.total_value_usd || "0",
-      chains: portfolio?.chains || [],
+      totalValueUsd: portfolio?.total_value_usd || analysisData?.portfolio_metrics?.total_value_usd?.toString() || totalFromBalances,
+      chains: portfolio?.chains || chainsFromBalances,
       topTokens: tokens,
       defiPositions: portfolio?.portfolio?.defi_positions?.length || 0,
       stakingPositions: stakes,
       totalStakedUsd: staking?.total_staked_usd || "0",
-      walletAge: analysis?.wallet_age || "Unknown",
-      riskScore: analysis?.risk_score || "Unknown",
-      txCount: analysis?.transaction_count || 0,
-      activeChains: (portfolio?.chains || []).length,
-      pnl30d: pnl?.total_pnl || "0",
+      walletAge: analysisData?.wallet_age || "Unknown",
+      riskScore: analysisData?.risk_metrics?.concentration_risk || analysisData?.risk_score || "Unknown",
+      txCount: analysisData?.activity_metrics?.total_transactions || analysisData?.transaction_count || 0,
+      activeChains: chainsFromBalances.length || (portfolio?.chains || []).length,
+      pnl30d: pnlData?.overall_metrics?.net_pnl_usd || pnlData?.total_pnl || "0",
       fetchedAt: new Date().toISOString(),
     };
   } catch (err: any) {
@@ -140,51 +139,43 @@ export async function elsaGetPortfolio(walletAddress: string): Promise<string> {
   const c = getClient();
   if (!c) return "⚠️ Elsa x402 is not configured yet. Add VALIDFI_WALLET_PRIVATE_KEY to enable live on-chain data.";
 
-  const portfolioRes = await paidPost<any>(c, "/api/get_portfolio", { wallet_address: walletAddress });
-  const balancesRes  = await paidPost<any>(c, "/api/get_balances", { wallet_address: walletAddress });
-  const stakingRes   = await paidPost<any>(c, "/api/get_stake_balances", { wallet_address: walletAddress });
-  const pnlRes       = await paidPost<any>(c, "/api/get_pnl_report", { wallet_address: walletAddress, time_period: "30_days" });
+  // Sequential to avoid nonce issues
+  const balancesRes = await paidPost<any>(c, "/api/get_balances", { wallet_address: walletAddress });
+  const pnlRes      = await paidPost<any>(c, "/api/get_pnl_report", { wallet_address: walletAddress, time_period: "30_days" });
 
-  if (!portfolioRes.ok) {
-    const e = portfolioRes.error;
+  if (!balancesRes.ok) {
+    const e = balancesRes.error;
     return `⚠️ Couldn't fetch portfolio data: ${e.message}${e.httpStatus ? ` (HTTP ${e.httpStatus})` : ""}`;
   }
 
-  const portfolio = portfolioRes.data;
-  const balances  = balancesRes.ok ? balancesRes.data : null;
-  const staking   = stakingRes.ok ? stakingRes.data : null;
-  const pnl       = pnlRes.ok ? pnlRes.data : null;
+  const balances = balancesRes.data;
+  const pnl      = pnlRes.ok ? pnlRes.data : null;
+  const pnlData  = pnl?.pnl_report || pnl;
 
   const tokens = (balances?.balances || [])
     .filter((b: any) => parseFloat(b.balance_usd || "0") > 0)
     .sort((a: any, b: any) => parseFloat(b.balance_usd) - parseFloat(a.balance_usd))
     .slice(0, 8);
 
-  const stakes = (staking?.stakes || []).slice(0, 5);
+  const totalValue = (balances?.balances || [])
+    .reduce((sum: number, b: any) => sum + parseFloat(b.balance_usd || "0"), 0)
+    .toFixed(2);
+
+  const chains = [...new Set((balances?.balances || []).map((b: any) => b.chain))] as string[];
+  const pnlValue = pnlData?.overall_metrics?.net_pnl_usd || pnlData?.total_pnl || "0";
 
   let resp = `**Your On-Chain Portfolio** ⚡ *Live via Elsa x402*\n\n`;
   resp += `**Wallet:** \`${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}\`\n`;
-  resp += `**Total Value:** $${formatUsd(portfolio?.total_value_usd || "0")}\n`;
-  resp += `**30-Day P&L:** ${parseFloat(pnl?.total_pnl || "0") >= 0 ? "+" : ""}$${formatUsd(pnl?.total_pnl || "0")}\n`;
-  resp += `**Active Chains:** ${(portfolio?.chains || []).join(", ") || "None detected"}\n`;
+  resp += `**Total Value:** $${formatUsd(totalValue)}\n`;
+  resp += `**30-Day P&L:** ${parseFloat(pnlValue) >= 0 ? "+" : ""}$${formatUsd(pnlValue)}\n`;
+  resp += `**Active Chains:** ${chains.join(", ") || "None detected"}\n`;
 
   if (tokens.length > 0) {
     resp += `\n**Holdings:**\n`;
     tokens.forEach((t: any) => {
-      resp += `- **${t.asset}** — $${formatUsd(t.balance_usd)} (${t.chain})\n`;
+      resp += `- **${t.asset}** — $${formatUsd(String(t.balance_usd))} (${t.chain})\n`;
     });
   }
-
-  if (stakes.length > 0) {
-    resp += `\n**Staking Positions:**\n`;
-    stakes.forEach((s: any) => {
-      resp += `- **${s.protocol}** — ${s.staked_amount} ${s.token} (${s.apy}% APY)\n`;
-    });
-    resp += `**Total Staked:** $${formatUsd(staking?.total_staked_usd || "0")}\n`;
-  }
-
-  const defiCount = portfolio?.portfolio?.defi_positions?.length || 0;
-  if (defiCount > 0) resp += `\n**DeFi Positions:** ${defiCount} active\n`;
 
   return resp;
 }
@@ -258,15 +249,20 @@ export async function elsaAnalyzeWallet(walletAddress: string): Promise<string> 
 
   try {
     const res = await c.post("/api/analyze_wallet", { wallet_address: walletAddress });
-    const a = res.data;
+    const raw = res.data;
+    const a = raw?.analysis || raw;
 
     let resp = `**Wallet Analysis** ⚡ *Live via Elsa x402*\n\n`;
     resp += `**Address:** \`${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}\`\n`;
-    resp += `**Wallet Age:** ${a?.wallet_age || "Unknown"}\n`;
-    resp += `**Transaction Count:** ${a?.transaction_count || 0}\n`;
-    resp += `**Risk Score:** ${a?.risk_score || "Unknown"}\n`;
-    if (a?.labels?.length) resp += `**Labels:** ${a.labels.join(", ")}\n`;
-    if (a?.summary) resp += `\n${a.summary}\n`;
+    resp += `**Total Value:** $${a?.portfolio_metrics?.total_value_usd?.toFixed(2) || "Unknown"}\n`;
+    resp += `**Tokens:** ${a?.portfolio_metrics?.token_count || 0} across ${a?.portfolio_metrics?.chain_count || 0} chains\n`;
+    resp += `**Transactions:** ${a?.activity_metrics?.total_transactions || 0}\n`;
+    resp += `**Active Protocols:** ${a?.activity_metrics?.active_protocols || 0}\n`;
+    resp += `**Concentration Risk:** ${a?.risk_metrics?.concentration_risk || "Unknown"}\n`;
+    resp += `**Diversification Score:** ${a?.risk_metrics?.diversification_score || "Unknown"}\n`;
+    if (a?.portfolio_metrics?.top_holding) {
+      resp += `**Top Holding:** ${a.portfolio_metrics.top_holding.symbol} ($${a.portfolio_metrics.top_holding.value_usd?.toFixed(2)}) — ${a.portfolio_metrics.top_holding.concentration_percent}%\n`;
+    }
     return resp;
   } catch (err: any) {
     const e = axiosErr(err);
@@ -322,32 +318,9 @@ export function extractTokenFromMessage(message: string): string {
   }
 
   const known = [
-    "ETH",
-    "BTC",
-    "SOL",
-    "USDC",
-    "USDT",
-    "ARB",
-    "OP",
-    "MATIC",
-    "AVAX",
-    "BNB",
-    "UNI",
-    "AAVE",
-    "LINK",
-    "PENDLE",
-    "LDO",
-    "CRV",
-    "MKR",
-    "SNX",
-    "COMP",
-    "DYDX",
-    "GMX",
-    "JUP",
-    "JTO",
-    "SUI",
-    "APT",
-    "BASE",
+    "ETH","BTC","SOL","USDC","USDT","ARB","OP","MATIC","AVAX","BNB",
+    "UNI","AAVE","LINK","PENDLE","LDO","CRV","MKR","SNX","COMP",
+    "DYDX","GMX","JUP","JTO","SUI","APT","BASE",
   ];
   for (const t of known) {
     if (m.includes(t.toLowerCase())) return t;
@@ -400,18 +373,8 @@ export async function fetchLiveMarketContext(
 
     if (competitors) {
       const known = [
-        "Uniswap",
-        "Aave",
-        "Lido",
-        "Curve",
-        "Compound",
-        "MakerDAO",
-        "Chainlink",
-        "Pendle",
-        "EigenLayer",
-        "Jupiter",
-        "Raydium",
-        "Jito",
+        "Uniswap","Aave","Lido","Curve","Compound","MakerDAO",
+        "Chainlink","Pendle","EigenLayer","Jupiter","Raydium","Jito",
       ];
       known.forEach((k) => {
         if (competitors.toLowerCase().includes(k.toLowerCase())) tokenSearches.push(k);
@@ -421,26 +384,21 @@ export async function fetchLiveMarketContext(
     const uniqueTokens = Array.from(new Set(tokenSearches)).slice(0, 4);
 
     const gasChain =
-      chain?.toLowerCase().includes("ethereum")
-        ? "ethereum"
-        : chain?.toLowerCase().includes("base")
-        ? "base"
-        : chain?.toLowerCase().includes("arbitrum")
-        ? "arbitrum"
-        : "base";
+      chain?.toLowerCase().includes("ethereum") ? "ethereum"
+      : chain?.toLowerCase().includes("base") ? "base"
+      : chain?.toLowerCase().includes("arbitrum") ? "arbitrum"
+      : "base";
 
     const tokens: LiveMarketContext["tokens"] = [];
     let yieldOpportunities: LiveMarketContext["yieldOpportunities"] = [];
     const gasPrices: LiveMarketContext["gasPrices"] = [];
 
-    // 1) Token prices (sequential to avoid multiple paid x402 txs at once)
+    // Sequential to avoid nonce issues
     for (const symbol of uniqueTokens) {
       const r = await paidPost<any>(c, "/api/search_token", { symbol_or_address: symbol, limit: 1 });
       if (!r?.ok) continue;
-
       const t = r.data?.result?.results?.[0] || r.data?.results?.[0];
       if (!t) continue;
-
       tokens.push({
         symbol: t.symbol,
         name: t.name,
@@ -449,18 +407,13 @@ export async function fetchLiveMarketContext(
       });
     }
 
-    // 2) Yield suggestions (sequential)
     const y = await paidPost<any>(c, "/api/get_yield_suggestions", { wallet_address: walletAddress });
     if (y?.ok && Array.isArray(y.data?.suggestions)) {
       yieldOpportunities = y.data.suggestions.slice(0, 5).map((s: any) => ({
-        protocol: s.protocol,
-        token: s.token,
-        apy: s.apy,
-        chain: s.chain,
+        protocol: s.protocol, token: s.token, apy: s.apy, chain: s.chain,
       }));
     }
 
-    // 3) Gas prices (sequential)
     const g = await paidPost<any>(c, "/api/get_gas_prices", { chain: gasChain });
     if (g?.ok) {
       gasPrices.push({ chain: gasChain, price: g.data?.gas_price || "N/A" });
