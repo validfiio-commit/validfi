@@ -7,7 +7,7 @@ import { useState } from "react";
 const AGENT = {
   id: "18886",
   name: "ValidFi",
-  symbol: "VFIO",
+  symbol: "VALID",
   tokenAddress: "0x8b7583b93ea81450af3caf3b7c71e43eb1d73ae8",
   walletAddress: "0x8b7583b93ea81450af3caf3b7c71e43eb1d73ae8",
   registry: "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432",
@@ -250,7 +250,7 @@ export default function MoltlaunchPage() {
             {[
               { name: "Elsa x402", desc: "Live on-chain data — portfolio, balances, DeFi, staking, P&L across all EVM chains", color: "accent" },
               { name: "Gemini AI", desc: "Strategic analysis engine for project validation scoring and market advisory", color: "purple" },
-              { name: "Moltlaunch", desc: "Onchain agent marketplace — escrow, reputation, and $VFIO token on Base", color: "green" },
+              { name: "Moltlaunch", desc: "Onchain agent marketplace — escrow, reputation, and $VALID token on Base", color: "green" },
             ].map((t, i) => (
               <div key={i} className="rounded-lg bg-[#06060a] border border-border p-4">
                 <div className={`text-sm font-bold mb-1 text-${t.color}`}>{t.name}</div>

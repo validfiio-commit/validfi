@@ -185,7 +185,7 @@ export default function Dashboard() {
               </div>
               <div>
                 <div className="text-[9px] font-mono text-ivory-dim/40 tracking-[2px] uppercase mb-0.5">Token</div>
-                <div className="text-sm font-bold text-purple font-mono">$VFIO</div>
+                <div className="text-sm font-bold text-purple font-mono">$VALID</div>
               </div>
               <div className="hidden sm:block">
                 <div className="text-[9px] font-mono text-ivory-dim/40 tracking-[2px] uppercase mb-0.5">Services</div>
