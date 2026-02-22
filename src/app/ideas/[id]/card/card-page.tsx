@@ -212,7 +212,15 @@ export default function CardPage() {
                     border: "1px solid rgba(0,240,255,0.2)",
                     boxShadow: "0 0 20px rgba(0,240,255,0.1)",
                   }}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00f0ff" strokeWidth="2.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                    {/* <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00f0ff" strokeWidth="2.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg> */}
+                  <img
+                    src="/validfi_logo.PNG"
+                    alt="ValidFi"
+                    className="h-5 w-5 rounded-sm"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).style.display = "none";
+                    }}
+                  />
                   </div>
                   <div>
                     <span className="text-[15px] font-bold tracking-tight" style={{ fontFamily: "Sora, sans-serif", color: "#eeeae2" }}>
