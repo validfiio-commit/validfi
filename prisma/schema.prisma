@@ -37,6 +37,7 @@ model Idea {
   report       Json?
   mintTxHash   String?       // Base tx hash of minted NFT
   mintTokenId  String?       // Token ID of minted NFT
+  launch       Launch?       // Moltlaunch agent + token registration
   chatMessages ChatMessage[]
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
@@ -60,4 +61,32 @@ model ChatMessage {
   createdAt DateTime @default(now())
 
   @@index([ideaId])
+}
+
+model Launch {
+  id              String       @id @default(cuid())
+  ideaId          String       @unique
+  idea            Idea         @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+  tokenName       String
+  tokenSymbol     String
+  tokenAddress    String?      // ERC-20 contract address on Base
+  transactionHash String?      // Deployment tx hash
+  explorerUrl     String?      // Basescan link
+  uniswapUrl      String?      // Uniswap trade link
+  walletAddress   String?      // Moltlaunch wallet used
+  agentId         String?      // Moltlaunch agent ID (ERC-8004)
+  status          LaunchStatus @default(PENDING)
+  error           String?
+  launchData      Json?        // Full CLI response
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@index([ideaId])
+}
+
+enum LaunchStatus {
+  PENDING
+  DEPLOYING
+  LIVE
+  FAILED
 }

@@ -66,9 +66,14 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
       if (verifyRes.ok) {
         setAddress(wallet);
-      } else {
-        const err = await verifyRes.json();
-        alert(err.error || "Verification failed");
+      }  else {
+        const text = await verifyRes.text();
+        try {
+          const err = JSON.parse(text);
+          alert(err.error || "Verification failed");
+        } catch {
+          alert("Verification failed: " + (text || verifyRes.statusText));
+        }
       }
     } catch (err: any) {
       if (err.code !== 4001) { // User rejected
