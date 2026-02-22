@@ -414,14 +414,14 @@ export default function Dashboard() {
           <img
             src="/validfi_logo.PNG"
             alt="ValidFi"
-            className="h-11 w-11 rounded-lg"
+            className="h-14 w-14 rounded-lg"
             onError={(e) => {
               (e.target as HTMLImageElement).style.display = "none";
             }}
           />
-          <span className="text-xl font-bold tracking-tight">
+          {/* <span className="text-xl font-bold tracking-tight">
             Valid<span className="text-accent">Fi</span>
-          </span>
+          </span> */}
         </div>
         <div className="flex items-center gap-3">
           <span className="text-[11px] font-mono text-accent px-3 py-1.5 rounded-md border border-accent-border bg-accent-muted tracking-wider">

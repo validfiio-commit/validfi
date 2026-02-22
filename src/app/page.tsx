@@ -894,14 +894,14 @@ export default function Home() {
                   <img
                     src="public/validfi_logo.PNG"
                     alt="ValidFi"
-                    className="h-7 w-7 rounded-md"
+                    className="h-14 w-14 rounded-md"
                     onError={(e) => {
                       (e.target as HTMLImageElement).style.display = "none";
                     }}
                   />
-                  <span className="text-lg font-bold">
+                  {/* <span className="text-lg font-bold">
                     Valid<span className="text-[#00f0ff]">Fi</span>
-                  </span>
+                  </span> */}
                 </div>
                 <p className="text-[0.85rem] text-[#9a9590] leading-relaxed max-w-[280px]">
                   The validation layer for Web3. Institutional-grade idea validation, powered by AI,
