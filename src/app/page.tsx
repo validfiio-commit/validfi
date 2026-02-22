@@ -512,10 +512,10 @@ export default function Home() {
             <div className="flex items-center justify-center gap-10 md:gap-16 flex-wrap">
 
               {poweredBy.map((p) => (
-                <a href={p.link} target="_blank" rel="noopener noreferrer" key={p.name} className="flex items-center gap-2 opacity-40 hover:opacity-80 transition-opacity">
+                <a href={p.link} target="_blank" rel="noopener noreferrer" key={p.name} className="flex items-center gap-2 opacity-100 hover:opacity-70 transition-opacity">
                   <div
                     key={p.name}
-                    className="flex items-center gap-2 opacity-40 hover:opacity-80 transition-opacity"
+                    className="flex items-center gap-2 opacity-100 hover:opacity-70 transition-opacity"
                   >
                     <div
                       className="w-7 h-7 rounded-md flex items-center justify-center text-sm font-bold"
@@ -892,7 +892,7 @@ export default function Home() {
               <div>
                 <div className="flex items-center gap-2 mb-4">
                   <img
-                    src="public/validfi_logo.PNG"
+                    src="/validfi_logo.PNG"
                     alt="ValidFi"
                     className="h-14 w-14 rounded-md"
                     onError={(e) => {
