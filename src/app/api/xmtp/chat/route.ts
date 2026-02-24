@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
       source = "gemini";
     } else {
       // No project — welcome message
-      response = `Welcome to **ValidFi** on XMTP! 🚀\n\nI'm your Web3 AI advisor. I can help with:\n\n⚡ **Live data** — "show my portfolio", "price of ETH", "best yields"\n🧠 **Strategy** — tokenomics, GTM, competitive analysis\n\nTo get personalized project advice, visit **validfi.com** and submit your idea first. Then come back here and I'll have full context on your project!\n\nWhat would you like to know?`;
+      response = `Welcome to **ValidFi** on XMTP! 🚀\n\nI'm your Web3 AI advisor. I can help with:\n\n⚡ **Live data** — "show my portfolio", "price of ETH", "best yields"\n🧠 **Strategy** — tokenomics, GTM, competitive analysis\n\nTo get personalized project advice, visit **validfi.io** and submit your idea first. Then come back here and I'll have full context on your project!\n\nWhat would you like to know?`;
       source = "gemini";
     }
 

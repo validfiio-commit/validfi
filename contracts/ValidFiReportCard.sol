@@ -154,7 +154,7 @@ contract ValidFiReportCard is ERC721, Ownable {
             '<line x1="24" y1="430" x2="376" y2="430" stroke="#00f0ff" stroke-width="0.5" opacity="0.2"/>',
             '<text x="24" y="455" fill="#333" font-family="monospace" font-size="8" letter-spacing="1">VALIDATED ON BASE</text>',
             '<text x="376" y="455" fill="#333" font-family="monospace" font-size="8" text-anchor="end">SOULBOUND NFT</text>',
-            '<text x="200" y="480" fill="#1a1a2e" font-family="monospace" font-size="7" text-anchor="middle">validfi.com | Powered by Elsa x402 + XMTP</text>',
+            '<text x="200" y="480" fill="#1a1a2e" font-family="monospace" font-size="7" text-anchor="middle">validfi.io | Powered by Elsa x402 + XMTP</text>',
             '</svg>'
         ));
 

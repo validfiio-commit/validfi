@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
     .toUpperCase()
     .replace(/[^A-Z0-9]/g, "")
     .slice(0, 10);
-  const scoreCardUrl = `${process.env.NEXT_PUBLIC_URL || "https://validfi.com"}/ideas/${idea.id}`;
+  const scoreCardUrl = `${process.env.NEXT_PUBLIC_URL || "https://validfi.io"}/ideas/${idea.id}`;
 
   // 6. Execute via Bankr
   try {

@@ -60,7 +60,7 @@ agent.on("text", async (ctx) => {
   } catch (err: any) {
     console.error("Error processing message:", err.message);
     await ctx.conversation.sendText(
-      "Hey! I'm the ValidFi AI advisor. I'm having trouble connecting to the ValidFi backend right now. Please try again in a moment or use the web app at validfi.com"
+      "Hey! I'm the ValidFi AI advisor. I'm having trouble connecting to the ValidFi backend right now. Please try again in a moment or use the web app at validfi.io"
     );
   }
 });
