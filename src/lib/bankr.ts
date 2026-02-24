@@ -1,65 +1,117 @@
-import { execSync } from "child_process";
 import { prisma } from "./prisma";
+
+const BANKR_API_URL = "https://api.bankr.bot";
+const BANKR_API_KEY = process.env.BANKR_API_KEY!;
 
 // ─── Types ───────────────────────────────────────────────────
 
 export interface BankrLaunchResult {
   success: boolean;
   tokenAddress?: string;
-  poolId?: string;
   chain?: string;
   viewUrl?: string;
   txUrl?: string;
-  feeDistribution?: {
-    creator?: string;
-    bankr?: string;
-    protocol?: string;
-    ecosystem?: string;
-  };
-  raw?: string;
+  jobId?: string;
   error?: string;
 }
 
-// ─── CLI Wrapper ─────────────────────────────────────────────
+// ─── API Helpers ─────────────────────────────────────────────
 
-function runBankr(args: string[], timeoutMs = 180_000): string {
-  const cmd = `bankr ${args.join(" ")}`;
-  try {
-    const raw = execSync(cmd, {
-      encoding: "utf-8",
-      timeout: timeoutMs,
-      env: { ...process.env, NODE_NO_WARNINGS: "1" },
-    });
-    return raw;
-  } catch (err: any) {
-    const output = (err.stdout || "") + (err.stderr || "");
-    throw new Error(output.trim().split("\n").pop() || "bankr command failed");
+/**
+ * POST /agent/prompt — Submit a prompt to the Bankr AI agent
+ * Returns a jobId to poll for completion
+ */
+async function bankrPrompt(prompt: string): Promise<{
+  jobId: string;
+  threadId?: string;
+}> {
+  const res = await fetch(`${BANKR_API_URL}/agent/prompt`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-API-Key": BANKR_API_KEY,
+    },
+    body: JSON.stringify({ prompt }),
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Bankr API error: ${res.status} ${err}`);
   }
+
+  const data = await res.json();
+  return {
+    jobId: data.jobId || data.job_id || data.id,
+    threadId: data.threadId || data.thread_id,
+  };
 }
 
-// ─── Parse Prompt Output ─────────────────────────────────────
+/**
+ * GET /agent/job/{jobId} — Poll job status until completed
+ */
+async function bankrPollJob(jobId: string, maxWaitMs = 120_000): Promise<string> {
+  const start = Date.now();
+  const pollInterval = 3000;
 
-function parsePromptOutput(output: string): BankrLaunchResult {
-  const lines = output.split("\n").map((l) => l.trim()).filter(Boolean);
+  while (Date.now() - start < maxWaitMs) {
+    const res = await fetch(`${BANKR_API_URL}/agent/job/${jobId}`, {
+      headers: {
+        "X-API-Key": BANKR_API_KEY,
+      },
+    });
 
-  // Extract contract address: "contract address is 0x..."
-  const addrMatch = output.match(/contract address[^\n]*?(0x[a-fA-F0-9]{40})/i);
+    if (!res.ok) {
+      throw new Error(`Bankr status check failed: ${res.status}`);
+    }
+
+    const data = await res.json();
+    const status = data.status?.toLowerCase();
+
+    if (status === "completed" || status === "done" || status === "success") {
+      // Extract text response — try multiple possible fields
+      const text = data.response
+        || data.result?.text
+        || data.result?.message
+        || data.result?.response
+        || data.text
+        || data.message
+        || (typeof data.result === "string" ? data.result : null)
+        || JSON.stringify(data);
+      return typeof text === "string" ? text : JSON.stringify(text);
+    }
+
+    if (status === "failed" || status === "error" || status === "cancelled") {
+      throw new Error(data.error || data.result?.error || data.response || "Bankr job failed");
+    }
+
+    // Still processing — wait and retry
+    await new Promise((r) => setTimeout(r, pollInterval));
+  }
+
+  throw new Error("Bankr launch timed out after 2 minutes");
+}
+
+// ─── Parse Response ──────────────────────────────────────────
+
+function parseBankrResponse(text: string): BankrLaunchResult {
+  // Extract contract address
+  const addrMatch = text.match(/contract address[^\n]*?(0x[a-fA-F0-9]{40})/i)
+    || text.match(/deployed[^\n]*?(0x[a-fA-F0-9]{40})/i)
+    || text.match(/(0x[a-fA-F0-9]{40})/);
   const tokenAddress = addrMatch?.[1];
 
-  // Extract view URL: "view token: https://..."
-  const viewMatch = output.match(/view token:\s*(https?:\/\/[^\s]+)/i);
+  // Extract view URL
+  const viewMatch = text.match(/view token:\s*(https?:\/\/[^\s]+)/i)
+    || text.match(/(https?:\/\/(?:www\.)?bankr\.bot\/launches\/[^\s]+)/i);
   const viewUrl = viewMatch?.[1];
 
-  // Extract tx URL: "tx: https://..."
-  const txMatch = output.match(/tx:\s*(https?:\/\/[^\s]+)/i);
+  // Extract tx URL
+  const txMatch = text.match(/tx:\s*(https?:\/\/[^\s]+)/i)
+    || text.match(/(https?:\/\/basescan\.org\/tx\/[^\s]+)/i);
   const txUrl = txMatch?.[1];
 
   if (!tokenAddress) {
-    // Check for errors
-    const errorLine = lines.find(
-      (l) => l.includes("✗") || l.includes("Error") || l.includes("error") || l.includes("failed")
-    );
-    return { success: false, error: errorLine || output.slice(-300) };
+    return { success: false, error: text.slice(0, 300) };
   }
 
   return {
@@ -71,30 +123,19 @@ function parsePromptOutput(output: string): BankrLaunchResult {
   };
 }
 
-// ─── Launch Token via bankr prompt ───────────────────────────
+// ─── Launch Token ────────────────────────────────────────────
 
 /**
- * Launch a token on Base via `bankr prompt`.
+ * Launch a token on Base via Bankr REST API.
  *
- * Uses natural language to deploy — avoids all interactive CLI prompts.
- * The Bankr AI agent handles token creation, Uniswap pool, and listing.
- *
- * Results:
- * - ERC-20 token deployed on Base
- * - Uniswap V4 pool created automatically
- * - Creator earns ~57% of swap fees
- * - Token instantly tradeable
- * - Listed on bankr.bot/launches
+ * Flow: POST /agent/prompt → poll GET /agent/job/{jobId} → parse result
  */
 export async function launchToken(params: {
   name: string;
   symbol: string;
   website?: string;
   image?: string;
-  tweet?: string;
-  fee?: string;
 }): Promise<BankrLaunchResult> {
-  // Build natural language prompt
   let prompt = `launch a token called ${params.name} with symbol ${params.symbol} on Base`;
 
   if (params.website) {
@@ -103,20 +144,22 @@ export async function launchToken(params: {
   if (params.image) {
     prompt += ` with image ${params.image}`;
   }
-  if (params.fee) {
-    prompt += ` with fee recipient ${params.fee}`;
-  }
 
-  const output = runBankr(["prompt", `"${sanitize(prompt)}"`], 120_000);
-  return parsePromptOutput(output);
+  // Step 1: Submit prompt
+  const { jobId } = await bankrPrompt(prompt);
+
+  // Step 2: Poll for completion
+  const responseText = await bankrPollJob(jobId);
+
+  // Step 3: Parse result
+  const result = parseBankrResponse(responseText);
+  result.jobId = jobId;
+
+  return result;
 }
 
 // ─── Database Operations ─────────────────────────────────────
 
-/**
- * Create a launch record and execute bankr launch.
- * Updates the record with results (success or failure).
- */
 export async function createAndExecuteLaunch(params: {
   ideaId: string;
   tokenName: string;
@@ -126,7 +169,6 @@ export async function createAndExecuteLaunch(params: {
   tweetUrl?: string;
   feeRecipient?: string;
 }) {
-  // Create pending launch record
   const launch = await prisma.launch.create({
     data: {
       ideaId: params.ideaId,
@@ -142,15 +184,12 @@ export async function createAndExecuteLaunch(params: {
       symbol: params.tokenSymbol,
       website: params.scoreCardUrl,
       image: params.imageUrl,
-      tweet: params.tweetUrl,
-      fee: params.feeRecipient,
     });
 
     if (!result.success) {
       throw new Error(result.error || "Launch failed");
     }
 
-    // Update with success
     const updated = await prisma.launch.update({
       where: { id: launch.id },
       data: {
@@ -164,7 +203,6 @@ export async function createAndExecuteLaunch(params: {
         bankrUrl: result.viewUrl || (result.tokenAddress
           ? `https://bankr.bot/launches/${result.tokenAddress}`
           : null),
-        poolId: result.poolId,
         status: "LIVE",
         launchData: result as any,
       },
@@ -185,9 +223,6 @@ export async function createAndExecuteLaunch(params: {
 
 // ─── Trade Commands ──────────────────────────────────────────
 
-/**
- * Generate Bankr trade commands for a token.
- */
 export function getTradeCommands(tokenAddress: string, amount = "50") {
   return {
     buyOnX: `@bankrbot buy $${amount} of ${tokenAddress}`,
@@ -200,10 +235,6 @@ export function getTradeCommands(tokenAddress: string, amount = "50") {
 }
 
 // ─── Helpers ─────────────────────────────────────────────────
-
-function sanitize(str: string): string {
-  return str.replace(/"/g, '\\"').replace(/\n/g, " ").trim().slice(0, 200);
-}
 
 export function generateSymbol(name: string): string {
   const words = name.trim().split(/\s+/);
