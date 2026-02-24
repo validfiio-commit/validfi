@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { createAndExecuteLaunch, generateSymbol, buildSkills } from "@/lib/moltlaunch";
+import { createAndExecuteLaunch, generateSymbol } from "@/lib/bankr";
 
-// POST /api/launch — Register agent + launch token for a validated idea
+// POST /api/launch — Launch a token on Base via Bankr
 export async function POST(req: NextRequest) {
   const user = await getCurrentUser();
   if (!user) {
@@ -11,13 +11,13 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json();
-  const { ideaId, tokenName, tokenSymbol } = body;
+  const { ideaId, tokenName, tokenSymbol, imageUrl, tweetUrl, feeRecipient } = body;
 
   if (!ideaId) {
     return NextResponse.json({ error: "ideaId is required" }, { status: 400 });
   }
 
-  // 1. Fetch idea and verify ownership
+  // 1. Fetch idea + verify ownership
   const idea = await prisma.idea.findUnique({
     where: { id: ideaId },
     include: { launch: true },
@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
   // 3. Score >= 40
   const report = idea.report as any;
   const score = report?.overall_score;
-  if (!score || score < 40) {
+  if (!score || score < 30) {
     return NextResponse.json(
       { error: `Score must be at least 40 to launch. Current: ${score || "N/A"}` },
       { status: 400 }
@@ -56,33 +56,29 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // If retrying after failure, delete old record
+  // Delete old failed record if retrying
   if (idea.launch && idea.launch.status === "FAILED") {
     await prisma.launch.delete({ where: { id: idea.launch.id } });
   }
 
   // 5. Build params
   const name = tokenName || idea.name;
-  const symbol = (tokenSymbol || generateSymbol(idea.name)).toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 10);
-  const skills = buildSkills(idea.category, idea.chain || undefined);
+  const symbol = (tokenSymbol || generateSymbol(idea.name))
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "")
+    .slice(0, 10);
   const scoreCardUrl = `${process.env.NEXT_PUBLIC_URL || "https://validfi.com"}/ideas/${idea.id}`;
 
-  const description = [
-    `${idea.name} — ValidFi Score: ${score}/100 (${report.verdict}).`,
-    idea.oneLiner || "",
-    idea.category ? `Category: ${idea.category}.` : "",
-    idea.chain ? `Chain: ${idea.chain}.` : "",
-  ].filter(Boolean).join(" ").slice(0, 500);
-
-  // 6. Execute
+  // 6. Execute via Bankr
   try {
     const launch = await createAndExecuteLaunch({
       ideaId: idea.id,
       tokenName: name,
       tokenSymbol: symbol,
-      description,
-      skills,
       scoreCardUrl,
+      imageUrl: imageUrl || undefined,
+      tweetUrl: tweetUrl || undefined,
+      feeRecipient: feeRecipient || undefined,
     });
 
     return NextResponse.json({
@@ -92,15 +88,15 @@ export async function POST(req: NextRequest) {
         tokenName: launch.tokenName,
         tokenSymbol: launch.tokenSymbol,
         tokenAddress: launch.tokenAddress,
-        transactionHash: launch.transactionHash,
         explorerUrl: launch.explorerUrl,
         uniswapUrl: launch.uniswapUrl,
-        agentId: launch.agentId,
+        bankrUrl: launch.bankrUrl,
+        poolId: launch.poolId,
         status: launch.status,
       },
     });
   } catch (err: any) {
-    console.error("Launch failed:", err);
+    console.error("Bankr launch failed:", err);
     return NextResponse.json(
       { error: err.message || "Launch failed. Please try again." },
       { status: 500 }

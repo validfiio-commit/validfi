@@ -9,11 +9,10 @@ datasource db {
 
 model User {
   id             String   @id @default(cuid())
-  wallet         String   @unique  // 0x... ethereum address (lowercase)
-  ens            String?           // optional ENS name
-  // Cached x402 wallet intelligence
-  walletData     Json?             // portfolio, balances, analysis
-  walletFetched  DateTime?         // when last fetched
+  wallet         String   @unique
+  ens            String?
+  walletData     Json?
+  walletFetched  DateTime?
   ideas          Idea[]
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
@@ -28,16 +27,16 @@ model Idea {
   category     String
   problem      String        @db.Text
   solution     String        @db.Text
-  chain        String?       // Ethereum, Solana, Base, etc.
-  tokenModel   String?       // Utility Token, Governance, NFT, etc.
+  chain        String?
+  tokenModel   String?
   stage        String        @default("idea")
   competitors  String?       @db.Text
   audience     String?
   status       IdeaStatus    @default(DRAFT)
   report       Json?
-  mintTxHash   String?       // Base tx hash of minted NFT
-  mintTokenId  String?       // Token ID of minted NFT
-  launch       Launch?       // Moltlaunch agent + token registration
+  mintTxHash   String?
+  mintTokenId  String?
+  launch       Launch?       // Bankr token launch
   chatMessages ChatMessage[]
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
@@ -69,15 +68,14 @@ model Launch {
   idea            Idea         @relation(fields: [ideaId], references: [id], onDelete: Cascade)
   tokenName       String
   tokenSymbol     String
-  tokenAddress    String?      // ERC-20 contract address on Base
-  transactionHash String?      // Deployment tx hash
+  tokenAddress    String?      // ERC-20 contract on Base
   explorerUrl     String?      // Basescan link
   uniswapUrl      String?      // Uniswap trade link
-  walletAddress   String?      // Moltlaunch wallet used
-  agentId         String?      // Moltlaunch agent ID (ERC-8004)
+  bankrUrl        String?      // bankr.bot/launches/{address}
+  poolId          String?      // Uniswap V4 pool ID
   status          LaunchStatus @default(PENDING)
   error           String?
-  launchData      Json?        // Full CLI response
+  launchData      Json?        // Full CLI response data
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
 
