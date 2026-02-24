@@ -346,7 +346,7 @@ export default function Dashboard() {
       <nav className="sticky top-0 z-50 flex items-center justify-between px-8 py-3.5 border-b border-border bg-[#06060add] backdrop-blur-xl">
         <div className="flex items-center gap-2 cursor-pointer" onClick={() => router.push("/dashboard")}>
           <img src="/validfi_logo.PNG" alt="ValidFi" className="h-10 w-10 rounded-lg" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
-          <span className="text-lg font-bold tracking-tight">Valid<span className="text-accent">Fi</span></span>
+          {/* <span className="text-lg font-bold tracking-tight">Valid<span className="text-accent">Fi</span></span> */}
         </div>
         <div className="flex items-center gap-3">
           <span className="text-[11px] font-mono text-accent px-3 py-1.5 rounded-md border border-accent-border bg-accent-muted tracking-wider">{shortAddr}</span>

@@ -251,6 +251,7 @@ export default function Home() {
     { name: "Base", letter: "⬡", bg: "rgba(0,82,255,0.12)", color: "#0052ff" , icon: "/base_logo.jpg", link: "https://base.org/"},
     { name: "Moltlaunch", letter: "M", bg: "rgba(255,165,0,0.12)", color: "#ffa500" , icon: "/moltlaunch_logo.jpg", link: "https://moltlaunch.com/"},
     { name: "Gemini", letter: "✦", bg: "rgba(66,133,244,0.12)", color: "#4285f4" , icon: "/gemini_logo.jpg", link: "https://www.gemini.com/"},
+    {name: "BankrBot", letter: "B", bg: "rgba(52,211,153,0.1)", color: "#34d399", icon: "/bankr_logo.jpg", link: "https://bankr.bot/"},
   ];
 
   const scoreDimensions = [
