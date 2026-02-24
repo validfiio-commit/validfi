@@ -1,7 +1,6 @@
 import { execSync } from "child_process";
 import { writeFileSync, existsSync, mkdirSync } from "fs";
 import { join } from "path";
-import { prisma } from "./prisma";
 
 // ─── Types ───────────────────────────────────────────────────
 export interface MoltlaunchResult {
@@ -31,7 +30,6 @@ function runMltl(args: string[], timeoutMs = 180_000): any {
     const trimmed = raw.trim();
     try {
       const result = JSON.parse(trimmed);
-      // mltl has a BigInt serialization bug — if tokenAddress is present, it succeeded
       if (result.error && !result.tokenAddress && !result.agentId) {
         throw new Error(result.error);
       }
@@ -47,7 +45,6 @@ function runMltl(args: string[], timeoutMs = 180_000): any {
       const trimmed = err.stdout.trim();
       try {
         const parsed = JSON.parse(trimmed);
-        // BigInt bug: if we have tokenAddress, it's actually a success
         if (parsed.tokenAddress || parsed.agentId) {
           return { success: true, ...parsed };
         }
@@ -66,18 +63,11 @@ function runMltl(args: string[], timeoutMs = 180_000): any {
   }
 }
 
-// ─── Register Agent + Launch Token ───────────────────────────
+// ─── Register Agent on Moltlaunch (for ValidFi hireable agent) ──
 
 /**
- * Register a validated project as an agent on Moltlaunch with a new token.
- *
- * Command: mltl register --name "X" --symbol "TKN" --description "..." --skills "..." --website "..." --json
- *
- * This gives the project:
- * - Onchain identity on Base (ERC-8004 Registry)
- * - A new tradeable ERC-20 token on Uniswap V4
- * - Swap fee earnings for the creator
- * - Reputation tracking via Mandate protocol
+ * Register a project as an agent on Moltlaunch Mandate protocol.
+ * Used for ValidFi agent identity — NOT for user token launches (Bankr handles those).
  */
 export async function registerAndLaunch(params: {
   name: string;
@@ -100,7 +90,6 @@ export async function registerAndLaunch(params: {
     args.push("--website", `"${params.website}"`);
   }
 
-  // Image is required by mltl register — generate a default if none provided
   const imagePath = params.image || generateDefaultLogo(params.name, params.symbol);
   args.push("--image", imagePath);
 
@@ -148,71 +137,6 @@ export async function getFees(): Promise<any> {
   }
 }
 
-// ─── Database Operations ─────────────────────────────────────
-
-/**
- * Create a launch record and execute mltl register with --symbol.
- * Updates the record with results (success or failure).
- */
-export async function createAndExecuteLaunch(params: {
-  ideaId: string;
-  tokenName: string;
-  tokenSymbol: string;
-  description: string;
-  skills: string;
-  scoreCardUrl?: string;
-}) {
-  const launch = await prisma.launch.create({
-    data: {
-      ideaId: params.ideaId,
-      tokenName: params.tokenName,
-      tokenSymbol: params.tokenSymbol.toUpperCase(),
-      status: "DEPLOYING",
-    },
-  });
-
-  try {
-    const result = await registerAndLaunch({
-      name: params.tokenName,
-      symbol: params.tokenSymbol,
-      description: params.description,
-      skills: params.skills,
-      website: params.scoreCardUrl,
-    });
-
-    const tokenAddr = result.tokenAddress;
-
-    const updated = await prisma.launch.update({
-      where: { id: launch.id },
-      data: {
-        tokenAddress: tokenAddr,
-        transactionHash: result.transactionHash,
-        explorerUrl: tokenAddr
-          ? `https://basescan.org/token/${tokenAddr}`
-          : result.explorer,
-        uniswapUrl: tokenAddr
-          ? `https://app.uniswap.org/explore/tokens/base/${tokenAddr}`
-          : null,
-        walletAddress: result.wallet,
-        agentId: result.agentId,
-        status: "LIVE",
-        launchData: result as any,
-      },
-    });
-
-    return updated;
-  } catch (err: any) {
-    await prisma.launch.update({
-      where: { id: launch.id },
-      data: {
-        status: "FAILED",
-        error: err.message || "Launch failed",
-      },
-    });
-    throw err;
-  }
-}
-
 // ─── Helpers ─────────────────────────────────────────────────
 
 function sanitize(str: string): string {
@@ -225,35 +149,28 @@ export function generateSymbol(name: string): string {
   return words.map((w) => w[0]).join("").slice(0, 5).toUpperCase();
 }
 
-/**
- * Generate a minimal valid PNG logo for mltl register.
- * No dependencies required — creates a raw PNG from bytes.
- */
 function generateDefaultLogo(name: string, symbol: string): string {
   const tmpDir = join(process.cwd(), ".moltlaunch-tmp");
   if (!existsSync(tmpDir)) mkdirSync(tmpDir, { recursive: true });
 
   const filePath = join(tmpDir, `${symbol.toLowerCase()}-logo.png`);
 
-  // Create a valid 64x64 PNG with solid color
   const zlib = require("zlib");
   const width = 64;
   const height = 64;
 
-  // Pick color based on name
   const colors = [
-    [0, 240, 255],   // cyan
-    [168, 85, 247],  // purple
-    [52, 211, 153],  // green
-    [251, 191, 36],  // amber
+    [0, 240, 255],
+    [168, 85, 247],
+    [52, 211, 153],
+    [251, 191, 36],
   ];
   const [r, g, b] = colors[name.length % colors.length];
 
-  // Build raw pixel data: filter_byte + RGB per pixel per row
   const raw = Buffer.alloc(height * (1 + width * 3));
   for (let y = 0; y < height; y++) {
     const rowOffset = y * (1 + width * 3);
-    raw[rowOffset] = 0; // filter: none
+    raw[rowOffset] = 0;
     for (let x = 0; x < width; x++) {
       const px = rowOffset + 1 + x * 3;
       raw[px] = r;
@@ -263,22 +180,15 @@ function generateDefaultLogo(name: string, symbol: string): string {
   }
 
   const compressed = zlib.deflateSync(raw);
-
-  // PNG signature
   const sig = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 
-  // IHDR
   const ihdrBody = Buffer.alloc(13);
   ihdrBody.writeUInt32BE(width, 0);
   ihdrBody.writeUInt32BE(height, 4);
-  ihdrBody[8] = 8;  // 8-bit
-  ihdrBody[9] = 2;  // RGB
+  ihdrBody[8] = 8;
+  ihdrBody[9] = 2;
   const ihdr = pngChunk("IHDR", ihdrBody);
-
-  // IDAT
   const idat = pngChunk("IDAT", compressed);
-
-  // IEND
   const iend = pngChunk("IEND", Buffer.alloc(0));
 
   const png = Buffer.concat([sig, ihdr, idat, iend]);
@@ -293,7 +203,6 @@ function pngChunk(type: string, data: Buffer): Buffer {
   const t = Buffer.from(type, "ascii");
   const body = Buffer.concat([t, data]);
 
-  // CRC32 calculation
   let crc = 0xFFFFFFFF;
   for (let i = 0; i < body.length; i++) {
     crc ^= body[i];
