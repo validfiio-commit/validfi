@@ -5,21 +5,13 @@ import { OnchainKitProvider } from "@coinbase/onchainkit";
 import { base } from "viem/chains";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { WagmiProvider, createConfig, http } from "wagmi";
-import { farcasterFrame } from "@farcaster/miniapp-sdk/wallet";
+import { farcasterMiniApp } from "@farcaster/miniapp-wagmi-connector";
 import { coinbaseWallet } from "wagmi/connectors";
-
-/**
- * OnchainKit v1.x: MiniKitProvider was replaced by OnchainKitProvider + miniKit prop.
- * We also set up wagmi + react-query manually (required peer deps in v1.x).
- *
- * The Farcaster connector auto-activates when running inside a mini app.
- * CoinbaseWallet is the fallback for standalone browser usage.
- */
 
 const wagmiConfig = createConfig({
   chains: [base],
   connectors: [
-    farcasterFrame(),
+    farcasterMiniApp(),
     coinbaseWallet({ appName: "ValidFi" }),
   ],
   ssr: true,
