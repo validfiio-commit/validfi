@@ -1,21 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { SignJWT } from "jose";
+import { createToken, getOrCreateUser, COOKIE_NAME } from "@/lib/auth";
 
 /**
- * Mini app auth endpoint.
+ * POST /api/auth/miniapp
  *
- * In the Base App / Farcaster context, the user is already authenticated
- * by the host client. Their wallet address comes from the Farcaster connector
- * which is injected by the host — we can trust it without requiring a signature.
+ * Authenticates mini app users without requiring a signature.
+ * In Base App / Farcaster, the user is already authenticated by the host.
+ * The wallet address comes from the Farcaster wagmi connector.
  *
- * This creates the same JWT cookie that /api/auth creates, so the rest of
- * your backend (middleware, API routes) works identically.
+ * Uses the same createToken, getOrCreateUser, and COOKIE_NAME
+ * as your existing /api/auth endpoint so the session is identical.
  */
-
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "default-secret-change-me"
-);
-
 export async function POST(req: NextRequest) {
   try {
     const { wallet, fid, username, displayName } = await req.json();
@@ -26,39 +21,32 @@ export async function POST(req: NextRequest) {
 
     const normalizedWallet = wallet.toLowerCase();
 
-    // Create JWT — same shape as your existing /api/auth endpoint
-    const token = await new SignJWT({
+    // Create/fetch user in DB — same as your verify flow
+    await getOrCreateUser(normalizedWallet);
+
+    // Create JWT — same function as your verify flow
+    const token = await createToken(normalizedWallet);
+
+    const res = NextResponse.json({
+      success: true,
       wallet: normalizedWallet,
       fid: fid || null,
       source: "miniapp",
-    })
-      .setProtectedHeader({ alg: "HS256" })
-      .setIssuedAt()
-      .setExpirationTime("7d")
-      .sign(JWT_SECRET);
-
-    // Set the same cookie name your middleware/auth checks for
-    const response = NextResponse.json({
-      wallet: normalizedWallet,
-      fid,
-      username,
-      source: "miniapp",
     });
 
-    response.cookies.set("auth_token", token, {
+    // Set cookie — same name & settings as your verify flow
+    res.cookies.set(COOKIE_NAME, token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      sameSite: "none", // Required for iframe/webview context in mini apps
-      maxAge: 60 * 60 * 24 * 7, // 7 days
+      sameSite: "none", // "none" required for mini app webview context
+      maxAge: 30 * 24 * 60 * 60, // 30 days, same as your auth
       path: "/",
     });
 
-    return response;
+    console.log(`[MiniApp Auth] ✅ ${normalizedWallet} (fid: ${fid || "none"})`);
+    return res;
   } catch (err: any) {
-    console.error("Mini app auth error:", err);
-    return NextResponse.json(
-      { error: "Authentication failed" },
-      { status: 500 }
-    );
+    console.error("[MiniApp Auth] ❌", err.message);
+    return NextResponse.json({ error: "Authentication failed" }, { status: 500 });
   }
 }

@@ -2,126 +2,95 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useMiniKit } from "@coinbase/onchainkit/minikit";
-import { useAccount, useConnect, useSignMessage } from "wagmi";
+import { useAccount, useConnect } from "wagmi";
 
 export function useWalletCompat() {
   const [address, setAddress] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
-  const [authAttempted, setAuthAttempted] = useState(false);
+  const [miniAppAuthDone, setMiniAppAuthDone] = useState(false);
 
   const { context } = useMiniKit();
   const isMiniApp = !!context;
 
   const { address: wagmiAddress, isConnected: wagmiConnected } = useAccount();
   const { connect: wagmiConnect, connectors } = useConnect();
-  const { signMessageAsync } = useSignMessage();
 
   const shortAddr = address
     ? `${address.slice(0, 6)}...${address.slice(-4)}`
     : "";
+
+  // ─── Debug: log context on mount ───
+  useEffect(() => {
+    console.log("[WalletCompat] isMiniApp:", isMiniApp);
+    console.log("[WalletCompat] context:", context);
+    console.log("[WalletCompat] wagmiAddress:", wagmiAddress);
+    console.log("[WalletCompat] wagmiConnected:", wagmiConnected);
+    console.log("[WalletCompat] connectors:", connectors.map((c) => c.name));
+  }, [isMiniApp, context, wagmiAddress, wagmiConnected, connectors]);
 
   // ─── Check existing JWT session on mount ───
   useEffect(() => {
     fetch("/api/auth", { method: "GET" })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
-        if (d?.wallet) setAddress(d.wallet);
+        if (d?.wallet) {
+          console.log("[WalletCompat] Existing session found:", d.wallet);
+          setAddress(d.wallet);
+        }
       })
       .catch(() => {});
   }, []);
 
-  // ─── Mini app: auto-auth when wagmi connects ───
-  // Uses a dedicated /api/auth/miniapp endpoint that doesn't require signing.
-  // The user is already authenticated by the Base App / Farcaster client.
+  // ─── Mini app: auto-auth when wagmi connects (NO signature required) ───
   useEffect(() => {
-    if (!isMiniApp || !wagmiAddress || address || authAttempted) return;
+    if (!isMiniApp || !wagmiAddress || address || miniAppAuthDone) return;
 
     const wallet = wagmiAddress.toLowerCase();
-    setAuthAttempted(true);
+    setMiniAppAuthDone(true);
+    setConnecting(true);
 
-    (async () => {
-      try {
-        setConnecting(true);
-        console.log("[MiniApp Auth] Attempting auth for wallet:", wallet, "fid:", context?.user?.fid);
+    console.log("[WalletCompat] Mini app auto-auth starting for:", wallet);
 
-        const res = await fetch("/api/auth/miniapp", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            wallet,
-            fid: context?.user?.fid || null,
-            username: context?.user?.username || null,
-            displayName: context?.user?.displayName || null,
-          }),
-        });
-
-        if (res.ok) {
-          const data = await res.json();
-          setAddress(data.wallet || wallet);
-          console.log("[MiniApp Auth] Success:", wallet);
-        } else {
-          const text = await res.text();
-          console.error("[MiniApp Auth] Failed:", text);
-
-          // Fallback: try nonce signing if miniapp endpoint doesn't exist
-          try {
-            await authWithNonceSigning(wallet);
-          } catch (signErr) {
-            console.error("[MiniApp Auth] Nonce signing fallback also failed:", signErr);
-          }
-        }
-      } catch (err) {
-        console.error("[MiniApp Auth] Error:", err);
-      } finally {
+    fetch("/api/auth/miniapp", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        wallet,
+        fid: context?.user?.fid || null,
+        username: context?.user?.username || null,
+        displayName: context?.user?.displayName || null,
+      }),
+    })
+      .then((res) => {
+        console.log("[WalletCompat] Mini app auth response:", res.status);
+        if (res.ok) return res.json();
+        throw new Error(`Auth failed: ${res.status}`);
+      })
+      .then((data) => {
+        console.log("[WalletCompat] ✅ Mini app auth success:", data);
+        setAddress(data.wallet || wallet);
+      })
+      .catch((err) => {
+        console.error("[WalletCompat] ❌ Mini app auth error:", err);
+      })
+      .finally(() => {
         setConnecting(false);
-      }
-    })();
-  }, [isMiniApp, wagmiAddress, address, authAttempted, context]);
-
-  // ─── Nonce-signing auth (standalone MetaMask flow) ───
-  const authWithNonceSigning = async (wallet: string) => {
-    const nonceRes = await fetch("/api/auth", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "nonce", wallet }),
-    });
-    const { message } = await nonceRes.json();
-
-    let signature: string;
-    if (isMiniApp) {
-      signature = await signMessageAsync({ message });
-    } else {
-      const provider = (window as any).ethereum;
-      signature = await provider.request({
-        method: "personal_sign",
-        params: [message, wallet],
       });
-    }
-
-    const verifyRes = await fetch("/api/auth", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "verify", wallet, signature }),
-    });
-
-    if (verifyRes.ok) {
-      setAddress(wallet);
-    } else {
-      throw new Error("Verification failed");
-    }
-  };
+  }, [isMiniApp, wagmiAddress, address, miniAppAuthDone, context]);
 
   // ─── Connect ───
   const connect = useCallback(async () => {
     if (isMiniApp) {
+      console.log("[WalletCompat] Mini app connect. wagmiConnected:", wagmiConnected);
       if (!wagmiConnected && connectors.length > 0) {
+        console.log("[WalletCompat] Triggering wagmi connect with:", connectors[0].name);
         wagmiConnect({ connector: connectors[0] });
       }
-      // Auto-auth useEffect handles the rest once wagmiAddress populates
+      // Auto-auth useEffect fires once wagmiAddress populates
       return;
     }
 
-    // Standalone MetaMask flow
+    // ─── Standalone: original MetaMask flow ───
     if (!(window as any).ethereum) {
       alert("Please install MetaMask to use ValidFi");
       return;
@@ -131,7 +100,37 @@ export function useWalletCompat() {
       const provider = (window as any).ethereum;
       const accounts = await provider.request({ method: "eth_requestAccounts" });
       const wallet = accounts[0].toLowerCase();
-      await authWithNonceSigning(wallet);
+
+      // Nonce signing for standalone mode
+      const nonceRes = await fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "nonce", wallet }),
+      });
+      const { message } = await nonceRes.json();
+
+      const signature = await provider.request({
+        method: "personal_sign",
+        params: [message, wallet],
+      });
+
+      const verifyRes = await fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "verify", wallet, signature }),
+      });
+
+      if (verifyRes.ok) {
+        setAddress(wallet);
+      } else {
+        const text = await verifyRes.text();
+        try {
+          const err = JSON.parse(text);
+          alert(err.error || "Verification failed");
+        } catch {
+          alert("Verification failed: " + (text || verifyRes.statusText));
+        }
+      }
     } catch (err: any) {
       if (err.code !== 4001) console.error("Connect error:", err);
     } finally {
@@ -147,7 +146,7 @@ export function useWalletCompat() {
       body: JSON.stringify({ action: "logout" }),
     });
     setAddress(null);
-    setAuthAttempted(false);
+    setMiniAppAuthDone(false);
   }, []);
 
   return {
