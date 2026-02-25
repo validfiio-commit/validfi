@@ -15,13 +15,12 @@ export interface BankrLaunchResult {
   error?: string;
 }
 
-// ─── API Helpers ─────────────────────────────────────────────
+// ─── API: Submit Prompt ──────────────────────────────────────
 
 /**
- * POST /agent/prompt — Submit a prompt to the Bankr AI agent
- * Returns a jobId to poll for completion
+ * POST /agent/prompt — Submit a prompt, returns jobId immediately (~1s)
  */
-async function bankrPrompt(prompt: string): Promise<{
+export async function bankrSubmitPrompt(prompt: string): Promise<{
   jobId: string;
   threadId?: string;
 }> {
@@ -46,66 +45,71 @@ async function bankrPrompt(prompt: string): Promise<{
   };
 }
 
+// ─── API: Check Job Status ───────────────────────────────────
+
 /**
- * GET /agent/job/{jobId} — Poll job status until completed
+ * GET /agent/job/{jobId} — Check status, returns immediately (~200ms)
  */
-async function bankrPollJob(jobId: string, maxWaitMs = 120_000): Promise<string> {
-  const start = Date.now();
-  const pollInterval = 3000;
+export async function bankrCheckJob(jobId: string): Promise<{
+  status: "processing" | "completed" | "failed";
+  response?: string;
+  error?: string;
+}> {
+  const res = await fetch(`${BANKR_API_URL}/agent/job/${jobId}`, {
+    headers: {
+      "X-API-Key": BANKR_API_KEY,
+    },
+  });
 
-  while (Date.now() - start < maxWaitMs) {
-    const res = await fetch(`${BANKR_API_URL}/agent/job/${jobId}`, {
-      headers: {
-        "X-API-Key": BANKR_API_KEY,
-      },
-    });
-
-    if (!res.ok) {
-      throw new Error(`Bankr status check failed: ${res.status}`);
-    }
-
-    const data = await res.json();
-    const status = data.status?.toLowerCase();
-
-    if (status === "completed" || status === "done" || status === "success") {
-      // Extract text response — try multiple possible fields
-      const text = data.response
-        || data.result?.text
-        || data.result?.message
-        || data.result?.response
-        || data.text
-        || data.message
-        || (typeof data.result === "string" ? data.result : null)
-        || JSON.stringify(data);
-      return typeof text === "string" ? text : JSON.stringify(text);
-    }
-
-    if (status === "failed" || status === "error" || status === "cancelled") {
-      throw new Error(data.error || data.result?.error || data.response || "Bankr job failed");
-    }
-
-    // Still processing — wait and retry
-    await new Promise((r) => setTimeout(r, pollInterval));
+  if (!res.ok) {
+    throw new Error(`Bankr status check failed: ${res.status}`);
   }
 
-  throw new Error("Bankr launch timed out after 2 minutes");
+  const data = await res.json();
+  const status = data.status?.toLowerCase();
+
+  if (status === "completed" || status === "done" || status === "success") {
+    const text = data.response
+      || data.result?.text
+      || data.result?.message
+      || data.result?.response
+      || data.text
+      || data.message
+      || (typeof data.result === "string" ? data.result : null)
+      || JSON.stringify(data);
+    return {
+      status: "completed",
+      response: typeof text === "string" ? text : JSON.stringify(text),
+    };
+  }
+
+  if (status === "failed" || status === "error" || status === "cancelled") {
+    return {
+      status: "failed",
+      error: data.error || data.result?.error || data.response || "Bankr job failed",
+    };
+  }
+
+  return { status: "processing" };
 }
 
 // ─── Parse Response ──────────────────────────────────────────
 
-function parseBankrResponse(text: string): BankrLaunchResult {
-  // Extract contract address
+export function parseBankrResponse(text: string): BankrLaunchResult {
+  // Check for rate limit or simulation-only response
+  if (text.match(/rate.?limit/i) || text.match(/simulation complete.*not broadcast/i) || text.match(/simulated deployment/i)) {
+    return { success: false, error: "Rate limited — Bankr allows 1 token launch per day. Try again tomorrow." };
+  }
+
   const addrMatch = text.match(/contract address[^\n]*?(0x[a-fA-F0-9]{40})/i)
     || text.match(/deployed[^\n]*?(0x[a-fA-F0-9]{40})/i)
     || text.match(/(0x[a-fA-F0-9]{40})/);
   const tokenAddress = addrMatch?.[1];
 
-  // Extract view URL
   const viewMatch = text.match(/view token:\s*(https?:\/\/[^\s]+)/i)
     || text.match(/(https?:\/\/(?:www\.)?bankr\.bot\/launches\/[^\s]+)/i);
   const viewUrl = viewMatch?.[1];
 
-  // Extract tx URL
   const txMatch = text.match(/tx:\s*(https?:\/\/[^\s]+)/i)
     || text.match(/(https?:\/\/basescan\.org\/tx\/[^\s]+)/i);
   const txUrl = txMatch?.[1];
@@ -123,102 +127,59 @@ function parseBankrResponse(text: string): BankrLaunchResult {
   };
 }
 
-// ─── Launch Token ────────────────────────────────────────────
-
-/**
- * Launch a token on Base via Bankr REST API.
- *
- * Flow: POST /agent/prompt → poll GET /agent/job/{jobId} → parse result
- */
-export async function launchToken(params: {
-  name: string;
-  symbol: string;
-  website?: string;
-  image?: string;
-}): Promise<BankrLaunchResult> {
-  let prompt = `launch a token called ${params.name} with symbol ${params.symbol} on Base`;
-
-  if (params.website) {
-    prompt += ` with website ${params.website}`;
-  }
-  if (params.image) {
-    prompt += ` with image ${params.image}`;
-  }
-
-  // Step 1: Submit prompt
-  const { jobId } = await bankrPrompt(prompt);
-
-  // Step 2: Poll for completion
-  const responseText = await bankrPollJob(jobId);
-
-  // Step 3: Parse result
-  const result = parseBankrResponse(responseText);
-  result.jobId = jobId;
-
-  return result;
-}
-
 // ─── Database Operations ─────────────────────────────────────
 
-export async function createAndExecuteLaunch(params: {
+/**
+ * Create a DEPLOYING launch record with the Bankr jobId
+ */
+export async function createLaunchRecord(params: {
   ideaId: string;
   tokenName: string;
   tokenSymbol: string;
-  scoreCardUrl?: string;
-  imageUrl?: string;
-  tweetUrl?: string;
-  feeRecipient?: string;
+  jobId: string;
 }) {
-  const launch = await prisma.launch.create({
+  return prisma.launch.create({
     data: {
       ideaId: params.ideaId,
       tokenName: params.tokenName,
       tokenSymbol: params.tokenSymbol.toUpperCase(),
       status: "DEPLOYING",
+      launchData: { jobId: params.jobId } as any,
     },
   });
+}
 
-  try {
-    const result = await launchToken({
-      name: params.tokenName,
-      symbol: params.tokenSymbol,
-      website: params.scoreCardUrl,
-      image: params.imageUrl,
-    });
-
-    if (!result.success) {
-      throw new Error(result.error || "Launch failed");
-    }
-
-    const updated = await prisma.launch.update({
-      where: { id: launch.id },
-      data: {
-        tokenAddress: result.tokenAddress,
-        explorerUrl: result.txUrl || (result.tokenAddress
-          ? `https://basescan.org/token/${result.tokenAddress}`
-          : null),
-        uniswapUrl: result.tokenAddress
-          ? `https://app.uniswap.org/explore/tokens/base/${result.tokenAddress}`
-          : null,
-        bankrUrl: result.viewUrl || (result.tokenAddress
-          ? `https://bankr.bot/launches/${result.tokenAddress}`
-          : null),
-        status: "LIVE",
-        launchData: result as any,
-      },
-    });
-
-    return updated;
-  } catch (err: any) {
-    await prisma.launch.update({
-      where: { id: launch.id },
+/**
+ * Finalize a launch record after Bankr job completes
+ */
+export async function finalizeLaunch(launchId: string, result: BankrLaunchResult) {
+  if (!result.success) {
+    return prisma.launch.update({
+      where: { id: launchId },
       data: {
         status: "FAILED",
-        error: err.message || "Launch failed",
+        error: result.error || "Launch failed",
       },
     });
-    throw err;
   }
+
+  return prisma.launch.update({
+    where: { id: launchId },
+    data: {
+      tokenAddress: result.tokenAddress,
+      explorerUrl: result.txUrl || (result.tokenAddress
+        ? `https://basescan.org/token/${result.tokenAddress}`
+        : null),
+      uniswapUrl: result.tokenAddress
+        ? `https://app.uniswap.org/explore/tokens/base/${result.tokenAddress}`
+        : null,
+      bankrUrl: result.viewUrl || (result.tokenAddress
+        ? `https://bankr.bot/launches/${result.tokenAddress}`
+        : null),
+      status: "LIVE",
+      launchData: result as any,
+    },
+  });
 }
 
 // ─── Trade Commands ──────────────────────────────────────────

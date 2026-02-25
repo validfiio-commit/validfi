@@ -62,17 +62,40 @@ function LaunchModal({ idea, onClose, onSuccess }: LaunchModalProps) {
     setStep("deploying");
 
     try {
+      // Step 1: Submit to Bankr (returns immediately with jobId)
       const res = await fetch("/api/launch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ideaId: idea.id, tokenName, tokenSymbol: tokenSymbol.toUpperCase(), imageUrl: imageUrl || undefined, tweetUrl: tweetUrl || undefined, feeRecipient: feeRecipient || undefined }),
+        body: JSON.stringify({ ideaId: idea.id, tokenName, tokenSymbol: tokenSymbol.toUpperCase(), imageUrl: imageUrl || undefined }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Launch failed");
 
-      setLaunchResult(data.launch);
-      setStep("success");
-      onSuccess(idea.id, data.launch);
+      const { jobId, id: launchId } = data.launch;
+
+      // Step 2: Poll status from frontend every 3s (avoids serverless timeout)
+      const maxPolls = 60; // 3 minutes max
+      for (let i = 0; i < maxPolls; i++) {
+        await new Promise((r) => setTimeout(r, 3000));
+
+        const pollRes = await fetch(`/api/launch/status?jobId=${jobId}&launchId=${launchId}`);
+        const pollData = await pollRes.json();
+
+        if (pollData.status === "completed") {
+          setLaunchResult(pollData.launch);
+          setStep("success");
+          onSuccess(idea.id, pollData.launch);
+          return;
+        }
+
+        if (pollData.status === "failed") {
+          throw new Error(pollData.error || "Launch failed");
+        }
+
+        // "processing" — continue polling
+      }
+
+      throw new Error("Launch timed out. Check your dashboard for status.");
     } catch (err: any) {
       setError(err.message || "Launch failed. Please try again.");
       setStep("error");

@@ -10,6 +10,9 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
+      <head>
+        <meta name="base:app_id" content="699ef86e444bc92883920614" />
+      </head>
       <body className="grain">
         <WalletProvider>{children}</WalletProvider>
       </body>

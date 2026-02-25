@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { createAndExecuteLaunch, generateSymbol } from "@/lib/bankr";
+import { bankrSubmitPrompt, createLaunchRecord, generateSymbol } from "@/lib/bankr";
 
-// POST /api/launch — Launch a token on Base via Bankr
+// POST /api/launch — Submit token launch to Bankr (returns immediately)
 export async function POST(req: NextRequest) {
   const user = await getCurrentUser();
   if (!user) {
@@ -11,7 +11,7 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json();
-  const { ideaId, tokenName, tokenSymbol, imageUrl, tweetUrl, feeRecipient } = body;
+  const { ideaId, tokenName, tokenSymbol, imageUrl } = body;
 
   if (!ideaId) {
     return NextResponse.json({ error: "ideaId is required" }, { status: 400 });
@@ -38,12 +38,12 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // 3. Score >= 40
+  // 3. Score >= 30
   const report = idea.report as any;
   const score = report?.overall_score;
   if (!score || score < 30) {
     return NextResponse.json(
-      { error: `Score must be at least 40 to launch. Current: ${score || "N/A"}` },
+      { error: `Score must be at least 30 to launch. Current: ${score || "N/A"}` },
       { status: 400 }
     );
   }
@@ -69,16 +69,21 @@ export async function POST(req: NextRequest) {
     .slice(0, 10);
   const scoreCardUrl = `${process.env.NEXT_PUBLIC_URL || "https://validfi.io"}/ideas/${idea.id}`;
 
-  // 6. Execute via Bankr
+  // 6. Build prompt
+  let prompt = `launch a token called ${name} with symbol ${symbol} on Base`;
+  prompt += ` with website ${scoreCardUrl}`;
+  if (imageUrl) prompt += ` with image ${imageUrl}`;
+
+  // 7. Submit to Bankr (returns immediately with jobId)
   try {
-    const launch = await createAndExecuteLaunch({
+    const { jobId } = await bankrSubmitPrompt(prompt);
+
+    // 8. Create DB record with jobId
+    const launch = await createLaunchRecord({
       ideaId: idea.id,
       tokenName: name,
       tokenSymbol: symbol,
-      scoreCardUrl,
-      imageUrl: imageUrl || undefined,
-      tweetUrl: tweetUrl || undefined,
-      feeRecipient: feeRecipient || undefined,
+      jobId,
     });
 
     return NextResponse.json({
@@ -87,18 +92,14 @@ export async function POST(req: NextRequest) {
         id: launch.id,
         tokenName: launch.tokenName,
         tokenSymbol: launch.tokenSymbol,
-        tokenAddress: launch.tokenAddress,
-        explorerUrl: launch.explorerUrl,
-        uniswapUrl: launch.uniswapUrl,
-        bankrUrl: launch.bankrUrl,
-        poolId: launch.poolId,
-        status: launch.status,
+        status: "DEPLOYING",
+        jobId,
       },
     });
   } catch (err: any) {
-    console.error("Bankr launch failed:", err);
+    console.error("Bankr submit failed:", err);
     return NextResponse.json(
-      { error: err.message || "Launch failed. Please try again." },
+      { error: err.message || "Failed to submit launch. Please try again." },
       { status: 500 }
     );
   }
