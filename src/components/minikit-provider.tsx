@@ -1,33 +1,58 @@
 "use client";
 
 import { ReactNode } from "react";
-import { MiniKitProvider } from "@coinbase/onchainkit/minikit";
-import { base } from "wagmi/chains";
+import { OnchainKitProvider } from "@coinbase/onchainkit";
+import { base } from "viem/chains";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { WagmiProvider, createConfig, http } from "wagmi";
+import { farcasterFrame } from "@farcaster/miniapp-sdk/wallet";
+import { coinbaseWallet } from "wagmi/connectors";
 
 /**
- * Wraps the app with MiniKitProvider which provides:
- * - Farcaster SDK context (user, client info) when inside a mini app
- * - wagmi + react-query providers (auto-configured)
- * - Farcaster connector when in mini app, CoinbaseWallet fallback otherwise
+ * OnchainKit v1.x: MiniKitProvider was replaced by OnchainKitProvider + miniKit prop.
+ * We also set up wagmi + react-query manually (required peer deps in v1.x).
  *
- * This replaces the old WalletProvider in layout.tsx.
- * The actual auth logic (nonce signing, JWT) lives in useWalletCompat.
+ * The Farcaster connector auto-activates when running inside a mini app.
+ * CoinbaseWallet is the fallback for standalone browser usage.
  */
+
+const wagmiConfig = createConfig({
+  chains: [base],
+  connectors: [
+    farcasterFrame(),
+    coinbaseWallet({ appName: "ValidFi" }),
+  ],
+  ssr: true,
+  transports: {
+    [base.id]: http(),
+  },
+});
+
+const queryClient = new QueryClient();
+
 export function MiniKitContextProvider({ children }: { children: ReactNode }) {
   return (
-    <MiniKitProvider
-      apiKey={process.env.NEXT_PUBLIC_ONCHAINKIT_API_KEY}
-      chain={base}
-      config={{
-        appearance: {
-          mode: "dark",
-          theme: "default",
-          name: "ValidFi",
-          logo: `${process.env.NEXT_PUBLIC_URL || "https://validfi.io"}/validfi_logo.PNG`,
-        },
-      }}
-    >
-      {children}
-    </MiniKitProvider>
+    <WagmiProvider config={wagmiConfig}>
+      <QueryClientProvider client={queryClient}>
+        <OnchainKitProvider
+          apiKey={process.env.NEXT_PUBLIC_ONCHAINKIT_API_KEY}
+          chain={base}
+          config={{
+            appearance: {
+              mode: "dark",
+              theme: "default",
+              name: "ValidFi",
+              logo: `${process.env.NEXT_PUBLIC_URL || "https://validfi.io"}/validfi_logo.PNG`,
+            },
+          }}
+          miniKit={{
+            enabled: true,
+            autoConnect: true,
+          }}
+        >
+          {children}
+        </OnchainKitProvider>
+      </QueryClientProvider>
+    </WagmiProvider>
   );
 }
