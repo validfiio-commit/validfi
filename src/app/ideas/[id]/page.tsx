@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { useWallet } from "@/components/wallet-provider";
+import { useWalletCompat as useWallet } from "@/hooks/use-wallet-compat";
 import MintReportCard from "@/components/mint-report-card";
 import type { Idea, Report } from "@/types";
 

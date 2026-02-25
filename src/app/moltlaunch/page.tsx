@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useWallet } from "@/components/wallet-provider";
+import { useWalletCompat as useWallet } from "@/hooks/use-wallet-compat";
 import { useState } from "react";
 
 const AGENT = {

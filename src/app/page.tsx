@@ -1,6 +1,7 @@
 "use client";
 
-import { useWallet } from "@/components/wallet-provider";
+import { useWalletCompat } from "@/hooks/use-wallet-compat";
+import { useMiniKit } from "@coinbase/onchainkit/minikit";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
 
@@ -13,27 +14,17 @@ export default function Home() {
   const revealRefs = useRef<(HTMLDivElement | null)[]>([]);
   const scoreRef = useRef<HTMLDivElement | null>(null);
 
-  // CRITICAL: Signal to the mini app host that your app is ready
+  // CRITICAL: Tell the mini app host that your app is ready to display.
+  // Without this, users see an infinite loading/splash screen.
   useEffect(() => {
     if (!isFrameReady) {
       setFrameReady();
     }
   }, [setFrameReady, isFrameReady]);
 
-  // Auto-redirect if wallet connected
   useEffect(() => {
     if (address) router.push("/dashboard");
   }, [address, router]);
-
-  // useEffect(() => {
-  //   if (address) router.push("/dashboard");
-  // }, [address, router]);
-
-  useEffect(() => {
-    if (isMiniApp && address) {
-      router.push("/dashboard");
-    }
-  }, [isMiniApp, address, router]);
 
   // Intersection observer for reveal animations
   useEffect(() => {

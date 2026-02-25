@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { useWallet } from "@/components/wallet-provider";
+import { useWalletCompat as useWallet } from "@/hooks/use-wallet-compat";
 import type { Idea, Report, ChatMessage } from "@/types";
 
 export default function ChatPage() {

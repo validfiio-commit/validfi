@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useWallet } from "@/components/wallet-provider";
+import { useWalletCompat as useWallet } from "@/hooks/use-wallet-compat";
 import { BankrTradeInline } from "@/components/bankr-trade";
 import type { Idea } from "@/types";
 

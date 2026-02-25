@@ -4,7 +4,6 @@ import { MiniKitContextProvider } from "@/components/minikit-provider";
 
 const appUrl = process.env.NEXT_PUBLIC_URL || "https://validfi.io";
 
-// Embed metadata for when your URL is shared in Farcaster/Base App
 export async function generateMetadata(): Promise<Metadata> {
   return {
     title: "ValidFi — Validate Web3 Ideas Before You Build",

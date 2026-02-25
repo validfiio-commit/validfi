@@ -5,10 +5,9 @@ export async function POST(req: NextRequest) {
 
   switch (body.event) {
     case "miniapp_added":
-      // User added your mini app — store notification token if present
       if (body.notificationDetails) {
         const { url, token } = body.notificationDetails;
-        // TODO: Store in your Prisma DB
+        // TODO: Store in your Prisma DB for push notifications
         // await prisma.miniAppUser.upsert({
         //   where: { fid: body.fid },
         //   create: { fid: body.fid, notificationUrl: url, notificationToken: token },
@@ -19,20 +18,17 @@ export async function POST(req: NextRequest) {
       break;
 
     case "miniapp_removed":
-      // User removed your mini app — invalidate notification tokens
       // await prisma.miniAppUser.delete({ where: { fid: body.fid } });
       console.log("Mini app removed:", body.fid);
       break;
 
     case "notifications_enabled":
       if (body.notificationDetails) {
-        // Store new notification token
         console.log("Notifications enabled:", body.fid);
       }
       break;
 
     case "notifications_disabled":
-      // Invalidate notification tokens
       console.log("Notifications disabled:", body.fid);
       break;
   }

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useWallet } from "@/components/wallet-provider";
+import { useWalletCompat as useWallet } from "@/hooks/use-wallet-compat";
 
 const CATEGORIES = ["DeFi","NFT / Gaming","DAO / Governance","Infrastructure","L2 / Scaling","Identity / Social","Payments","RWA","AI x Crypto","Privacy","DePin","Other"];
 const CHAINS = ["Ethereum","Solana","Base","Arbitrum","Polygon","Optimism","Avalanche","BNB Chain","Sui","Aptos","Bitcoin L2","Multi-chain","Other"];
