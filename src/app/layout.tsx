@@ -1,20 +1,46 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { WalletProvider } from "@/components/wallet-provider";
+import { MiniKitContextProvider } from "@/components/minikit-provider";
 
-export const metadata: Metadata = {
-  title: "ValidFi — Validate Web3 Ideas Before You Build",
-  description: "AI-powered Web3 project validation. Connect wallet, submit your idea, get institutional-grade analysis.",
-};
+const appUrl = process.env.NEXT_PUBLIC_URL || "https://validfi.io";
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+// Embed metadata for when your URL is shared in Farcaster/Base App
+export async function generateMetadata(): Promise<Metadata> {
+  return {
+    title: "ValidFi — Validate Web3 Ideas Before You Build",
+    description:
+      "AI-powered Web3 project validation. Connect wallet, submit your idea, get institutional-grade analysis.",
+    other: {
+      "fc:miniapp": JSON.stringify({
+        version: "next",
+        imageUrl: `${appUrl}/og-image.png`,
+        button: {
+          title: "Validate Your Idea",
+          action: {
+            type: "launch_miniapp",
+            name: "ValidFi",
+            url: appUrl,
+            splashImageUrl: `${appUrl}/validfi_logo.PNG`,
+            splashBackgroundColor: "#06060a",
+          },
+        },
+      }),
+    },
+  };
+}
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html lang="en">
       <head>
         <meta name="base:app_id" content="699ef86e444bc92883920614" />
       </head>
       <body className="grain">
-        <WalletProvider>{children}</WalletProvider>
+        <MiniKitContextProvider>{children}</MiniKitContextProvider>
       </body>
     </html>
   );

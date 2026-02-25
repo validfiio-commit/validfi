@@ -7,14 +7,33 @@ import { useEffect, useRef } from "react";
 import { Analytics } from "@vercel/analytics/next"
 
 export default function Home() {
-  const { address, connecting, connect } = useWallet();
+  const { address, connecting, connect, isMiniApp } = useWalletCompat();
+  const { setFrameReady, isFrameReady } = useMiniKit();
   const router = useRouter();
   const revealRefs = useRef<(HTMLDivElement | null)[]>([]);
   const scoreRef = useRef<HTMLDivElement | null>(null);
 
+  // CRITICAL: Signal to the mini app host that your app is ready
+  useEffect(() => {
+    if (!isFrameReady) {
+      setFrameReady();
+    }
+  }, [setFrameReady, isFrameReady]);
+
+  // Auto-redirect if wallet connected
   useEffect(() => {
     if (address) router.push("/dashboard");
   }, [address, router]);
+
+  // useEffect(() => {
+  //   if (address) router.push("/dashboard");
+  // }, [address, router]);
+
+  useEffect(() => {
+    if (isMiniApp && address) {
+      router.push("/dashboard");
+    }
+  }, [isMiniApp, address, router]);
 
   // Intersection observer for reveal animations
   useEffect(() => {
