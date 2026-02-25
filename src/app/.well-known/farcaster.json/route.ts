@@ -13,7 +13,7 @@ export async function GET() {
       subtitle: "Validate Before You Build",
       description:
         "AI-powered Web3 project validation. Submit your idea, get institutional-grade analysis, and mint your score card as an NFT on Base.",
-      iconUrl: `${appUrl}/validfi_logo.png`,
+      iconUrl: `${appUrl}/validfi_icon_url.png`,
       homeUrl: appUrl,
       splashImageUrl: `${appUrl}/validfi_logo.png`,
       splashBackgroundColor: "#06060a",
