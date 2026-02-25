@@ -10,7 +10,7 @@ export async function GET() {
     miniapp: {
       version: "1",
       name: "ValidFi",
-      subtitle: "Validate Before You Build",
+      subtitle: "Validate. Mint. Execute.",
       description:
         "AI-powered Web3 project validation. Submit your idea, get institutional-grade analysis, and mint your score card as an NFT on Base.",
       iconUrl: `${appUrl}/validfi_icon_url.png`,
