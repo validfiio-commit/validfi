@@ -417,7 +417,7 @@ export default function Home() {
           <a href="#" className="flex items-center gap-2.5">
             <img
               className="h-14 w-14 rounded-lg"
-              src="/validfi_logo.PNG"
+              src="/validfi_logo.png"
               alt="ValidFi"
               onError={(e) => {
                 (e.target as HTMLImageElement).style.display = "none";
@@ -906,7 +906,7 @@ export default function Home() {
               <div>
                 <div className="flex items-center gap-2 mb-4">
                   <img
-                    src="/validfi_logo.PNG"
+                    src="/validfi_logo.png"
                     alt="ValidFi"
                     className="h-14 w-14 rounded-md"
                     onError={(e) => {

@@ -10,12 +10,12 @@ export async function GET() {
     miniapp: {
       version: "1",
       name: "ValidFi",
-      subtitle: "Validate Web3 Ideas Before You Build",
+      subtitle: "Validate Before You Build",
       description:
         "AI-powered Web3 project validation. Submit your idea, get institutional-grade analysis, and mint your score card as an NFT on Base.",
-      iconUrl: `${appUrl}/validfi_logo.PNG`,
+      iconUrl: `${appUrl}/validfi_logo.png`,
       homeUrl: appUrl,
-      splashImageUrl: `${appUrl}/validfi_logo.PNG`,
+      splashImageUrl: `${appUrl}/validfi_logo.png`,
       splashBackgroundColor: "#06060a",
       webhookUrl: `${appUrl}/api/webhook`,
       primaryCategory: "developer-tools",
@@ -26,7 +26,7 @@ export async function GET() {
         `${appUrl}/screenshots/report.png`,
         `${appUrl}/screenshots/scorecard.png`,
       ],
-      tagline: "Stop guessing. Start validating.",
+      tagline: "Start validating ideas",
       ogTitle: "ValidFi — Validate Web3 Ideas",
       ogDescription:
         "Submit your Web3 idea and get an institutional-grade validation report in under 5 minutes.",

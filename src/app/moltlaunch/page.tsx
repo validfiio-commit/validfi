@@ -85,7 +85,7 @@ export default function MoltlaunchPage() {
           <div className="w-6 h-6 rounded-md bg-accent-muted border border-accent-border flex items-center justify-center">
             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#00f0ff" strokeWidth="2.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" /></svg>
           </div>
-          <img src="/validfi_logo.PNG" alt="ValidFi" className="h-10 w-10 rounded-lg" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+          <img src="/validfi_logo.png" alt="ValidFi" className="h-10 w-10 rounded-lg" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
           {/* <span className="text-base font-bold tracking-tight">Valid<span className="text-accent">Fi</span></span> */}
         </div>
         <div className="flex items-center gap-3">

@@ -34,7 +34,7 @@ export function MiniKitContextProvider({ children }: { children: ReactNode }) {
               mode: "dark",
               theme: "default",
               name: "ValidFi",
-              logo: `${process.env.NEXT_PUBLIC_URL || "https://validfi.io"}/validfi_logo.PNG`,
+              logo: `${process.env.NEXT_PUBLIC_URL || "https://validfi.io"}/validfi_logo.png`,
             },
           }}
           miniKit={{

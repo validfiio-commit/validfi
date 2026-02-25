@@ -19,7 +19,7 @@ export async function generateMetadata(): Promise<Metadata> {
             type: "launch_miniapp",
             name: "ValidFi",
             url: appUrl,
-            splashImageUrl: `${appUrl}/validfi_logo.PNG`,
+            splashImageUrl: `${appUrl}/validfi_logo.png`,
             splashBackgroundColor: "#06060a",
           },
         },
