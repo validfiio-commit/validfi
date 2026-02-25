@@ -4,27 +4,14 @@ import { useState, useEffect, useCallback } from "react";
 import { useMiniKit } from "@coinbase/onchainkit/minikit";
 import { useAccount, useConnect, useSignMessage } from "wagmi";
 
-/**
- * Drop-in replacement for useWallet() from wallet-provider.tsx.
- *
- * Detects whether we're running inside a mini app (Base App / Farcaster)
- * or standalone browser, and uses the appropriate auth flow:
- *
- * - Mini app:   Wallet comes from MiniKit's wagmi connector (auto-connected).
- *               We still call /api/auth to create the JWT session so your
- *               backend works identically.
- *
- * - Standalone: Falls back to your original MetaMask flow with nonce signing.
- */
 export function useWalletCompat() {
   const [address, setAddress] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
+  const [authAttempted, setAuthAttempted] = useState(false);
 
-  // MiniKit context — only populated inside Base App / Farcaster
   const { context } = useMiniKit();
   const isMiniApp = !!context;
 
-  // Wagmi hooks — used in mini app mode where MiniKitProvider configures the connector
   const { address: wagmiAddress, isConnected: wagmiConnected } = useAccount();
   const { connect: wagmiConnect, connectors } = useConnect();
   const { signMessageAsync } = useSignMessage();
@@ -33,52 +20,7 @@ export function useWalletCompat() {
     ? `${address.slice(0, 6)}...${address.slice(-4)}`
     : "";
 
-  // ─── Nonce-signing auth (shared by both flows) ───
-  const authWithNonceSigning = useCallback(
-    async (wallet: string, useMiniAppSigner: boolean) => {
-      // 1. Get nonce
-      const nonceRes = await fetch("/api/auth", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "nonce", wallet }),
-      });
-      const { message } = await nonceRes.json();
-
-      // 2. Sign — wagmi signer in mini app, raw MetaMask otherwise
-      let signature: string;
-      if (useMiniAppSigner) {
-        signature = await signMessageAsync({ message });
-      } else {
-        const provider = (window as any).ethereum;
-        signature = await provider.request({
-          method: "personal_sign",
-          params: [message, wallet],
-        });
-      }
-
-      // 3. Verify & get JWT cookie
-      const verifyRes = await fetch("/api/auth", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "verify", wallet, signature }),
-      });
-
-      if (verifyRes.ok) {
-        setAddress(wallet);
-      } else {
-        const text = await verifyRes.text();
-        try {
-          const err = JSON.parse(text);
-          console.error(err.error || "Verification failed");
-        } catch {
-          console.error("Verification failed:", text || verifyRes.statusText);
-        }
-      }
-    },
-    [signMessageAsync]
-  );
-
-  // ─── Check existing JWT session on mount (same as original) ───
+  // ─── Check existing JWT session on mount ───
   useEffect(() => {
     fetch("/api/auth", { method: "GET" })
       .then((r) => (r.ok ? r.json() : null))
@@ -88,36 +30,98 @@ export function useWalletCompat() {
       .catch(() => {});
   }, []);
 
-  // ─── Mini app: auto-auth once wagmi connects via Farcaster connector ───
+  // ─── Mini app: auto-auth when wagmi connects ───
+  // Uses a dedicated /api/auth/miniapp endpoint that doesn't require signing.
+  // The user is already authenticated by the Base App / Farcaster client.
   useEffect(() => {
-    if (!isMiniApp || !wagmiAddress || address) return;
+    if (!isMiniApp || !wagmiAddress || address || authAttempted) return;
 
     const wallet = wagmiAddress.toLowerCase();
+    setAuthAttempted(true);
 
     (async () => {
       try {
         setConnecting(true);
-        await authWithNonceSigning(wallet, true);
+        console.log("[MiniApp Auth] Attempting auth for wallet:", wallet, "fid:", context?.user?.fid);
+
+        const res = await fetch("/api/auth/miniapp", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            wallet,
+            fid: context?.user?.fid || null,
+            username: context?.user?.username || null,
+            displayName: context?.user?.displayName || null,
+          }),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          setAddress(data.wallet || wallet);
+          console.log("[MiniApp Auth] Success:", wallet);
+        } else {
+          const text = await res.text();
+          console.error("[MiniApp Auth] Failed:", text);
+
+          // Fallback: try nonce signing if miniapp endpoint doesn't exist
+          try {
+            await authWithNonceSigning(wallet);
+          } catch (signErr) {
+            console.error("[MiniApp Auth] Nonce signing fallback also failed:", signErr);
+          }
+        }
       } catch (err) {
-        console.error("Mini app auto-auth error:", err);
+        console.error("[MiniApp Auth] Error:", err);
       } finally {
         setConnecting(false);
       }
     })();
-  }, [isMiniApp, wagmiAddress, address, authWithNonceSigning]);
+  }, [isMiniApp, wagmiAddress, address, authAttempted, context]);
 
-  // ─── Connect: branch by context ───
+  // ─── Nonce-signing auth (standalone MetaMask flow) ───
+  const authWithNonceSigning = async (wallet: string) => {
+    const nonceRes = await fetch("/api/auth", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "nonce", wallet }),
+    });
+    const { message } = await nonceRes.json();
+
+    let signature: string;
+    if (isMiniApp) {
+      signature = await signMessageAsync({ message });
+    } else {
+      const provider = (window as any).ethereum;
+      signature = await provider.request({
+        method: "personal_sign",
+        params: [message, wallet],
+      });
+    }
+
+    const verifyRes = await fetch("/api/auth", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "verify", wallet, signature }),
+    });
+
+    if (verifyRes.ok) {
+      setAddress(wallet);
+    } else {
+      throw new Error("Verification failed");
+    }
+  };
+
+  // ─── Connect ───
   const connect = useCallback(async () => {
     if (isMiniApp) {
-      // In mini app, wallet should already be connected. If not, trigger wagmi.
       if (!wagmiConnected && connectors.length > 0) {
         wagmiConnect({ connector: connectors[0] });
       }
-      // The useEffect above handles auth once wagmiAddress populates.
+      // Auto-auth useEffect handles the rest once wagmiAddress populates
       return;
     }
 
-    // ─── Standalone: original MetaMask flow ───
+    // Standalone MetaMask flow
     if (!(window as any).ethereum) {
       alert("Please install MetaMask to use ValidFi");
       return;
@@ -125,21 +129,17 @@ export function useWalletCompat() {
     setConnecting(true);
     try {
       const provider = (window as any).ethereum;
-      const accounts = await provider.request({
-        method: "eth_requestAccounts",
-      });
+      const accounts = await provider.request({ method: "eth_requestAccounts" });
       const wallet = accounts[0].toLowerCase();
-      await authWithNonceSigning(wallet, false);
+      await authWithNonceSigning(wallet);
     } catch (err: any) {
-      if (err.code !== 4001) {
-        console.error("Connect error:", err);
-      }
+      if (err.code !== 4001) console.error("Connect error:", err);
     } finally {
       setConnecting(false);
     }
-  }, [isMiniApp, wagmiConnected, connectors, wagmiConnect, authWithNonceSigning]);
+  }, [isMiniApp, wagmiConnected, connectors, wagmiConnect]);
 
-  // ─── Disconnect (same as original) ───
+  // ─── Disconnect ───
   const disconnect = useCallback(async () => {
     await fetch("/api/auth", {
       method: "POST",
@@ -147,6 +147,7 @@ export function useWalletCompat() {
       body: JSON.stringify({ action: "logout" }),
     });
     setAddress(null);
+    setAuthAttempted(false);
   }, []);
 
   return {
